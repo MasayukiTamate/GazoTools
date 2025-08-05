@@ -31,6 +31,17 @@ canvas.place(x=0, y=0)
 #ここまで
 file_namae = []
 
+class Zukei:
+    def __init__(self,x,y,w,h):
+        self.x = x
+        self.y = y
+        self.width = w
+        self.height = h
+        pass
+    def atrari(self):
+        pass
+
+
 #ダイアログからフォルダ名取得関数
 def GetDiaFolder():
     
@@ -225,6 +236,7 @@ img3 = [ImageTk.PhotoImage(image.copy()) for image in img1]
     
 #左クリックアクション
 def rightClick(event):
+    print(rectangles)
     global j,folder
     if j >= len(folder):
         a = msg.askokcancel("", "終わり？")
