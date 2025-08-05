@@ -22,7 +22,11 @@ num = 0
 root = tk.Tk()
 root.attributes("-fullscreen", True)
 root.title(str(""))
-canvas = tk.Canvas(root, width=1920, height=1080)
+
+WIDTH =  root.winfo_width()
+HEIGHT = root.winfo_height()
+print(f"{WIDTH=} {HEIGHT=}")
+canvas = tk.Canvas(root, width=3440, height=1440)
 canvas.place(x=0, y=0)
 #ここまで
 file_namae = []
@@ -118,8 +122,8 @@ def SinByouGa():
                 img1.append(Image.open(open(str(fol)+str(o), 'rb')))
                 img1[i].thumbnail((500, 500), 0)
                 img1[i] = ImageTk.PhotoImage(img1[i])
-                x1 = random.randint(0,1000)
-                y1 = random.randint(0,500)
+                x1 = random.randint(0,WIDTH - 500)
+                y1 = random.randint(0,HEIGHT - 500)
                 x2 = x1 + img1[i].width()
                 y2 = y1 + img1[i].height()
         
@@ -177,6 +181,10 @@ files, f_name = GetDiaFolder()
 GetKoFolder(files)
 msg.showinfo("","")
 
+WIDTH =  root.winfo_width()
+HEIGHT = root.winfo_height()
+
+
 
 i = 0
 for f in files:
@@ -186,8 +194,8 @@ for f in files:
         img1.append(Image.open(open(str(f_name)+str(o), 'rb')))
         img1[i].thumbnail((500, 500), 0)
         img2.append(ImageTk.PhotoImage(img1[i]))
-        x1 = random.randint(0,1000)
-        y1 = random.randint(0,500)
+        x1 = random.randint(0,WIDTH -500)
+        y1 = random.randint(0,HEIGHT -500)
         x2 = x1 + img2[i].width()
         y2 = y1 + img2[i].height()
         
