@@ -39,6 +39,7 @@ def GetDiaFolder():
     files = os.listdir(x)
     
     return files, f_name
+
 #ループ１
 #ループ２
 #格納したデータを再描画
@@ -51,6 +52,7 @@ def Kurikaesi():
         if i >= len(img1):
             flag1 = 0
         root.update()
+
 #クリックした画像を一番最後に描写
 def Kurikaesi2(n):
     global num
@@ -132,6 +134,8 @@ def SinByouGa():
         flag2 = 0
 
     return
+
+
 #再描画クリックした画像を一番上
 #子フォルダの取得
 def GetKoFolder(files):
@@ -150,8 +154,24 @@ def GetKoFolder(files):
 
     return
 
+def owari():
+    if msg.askokcancel("", "終わり？"):
+
+        msg.showinfo("終わるのか…","終わるのか…")
+        exit()
+        return
+    else:
+        msg.showinfo("終らないのか…")
+        return
+
+'''
+------------------------------------------------------------------------------------------------------------------------
+
+プログラム基本部分
+'''
 
 file_path = tk.filedialog.askopenfilename(initialdir=".")
+
 
 files, f_name = GetDiaFolder()
 GetKoFolder(files)
@@ -171,7 +191,10 @@ for f in files:
         x2 = x1 + img2[i].width()
         y2 = y1 + img2[i].height()
         
+
+
         rectangle = canvas.create_rectangle(x1, y1, x2, y2, fill="blue")
+
         rectangles[rectangle] = num# 四角形に番号を割り当てる
         canvas.create_image(x1,y1,image=img2[i],tag="illust",anchor=tk.NW)
 
@@ -181,16 +204,18 @@ for f in files:
         
         i = i + 1
 
+
+
 img3 = [ImageTk.PhotoImage(image.copy()) for image in img1]
 
 
-def on_canvas_click(self, event):
-    msg.showinfo("終わりのか…")
-    exit()
-    return
-    
 
-#def leftClick(event):
+'''
+--------------------------------------------------------------------------------------------------------------------------------
+アクション
+'''
+    
+#左クリックアクション
 def rightClick(event):
     global j,folder
     if j >= len(folder):
@@ -204,20 +229,18 @@ def rightClick(event):
             GetKoFolder(files)
 
 
-#        msg.showinfo("終わり","")
-#        exit()
-
     SinByouGa()
 
     j = j + 1
     return
     
-
+#真ん中クリックアクション
 def middleClick(event):
-#    print('Middle')
-    exit()
-    return
 
+    owari()
+
+
+#右クリックアクション
 def leftClick(event):
     print('left')
 
@@ -271,6 +294,7 @@ def key_event(e):
     j = j + 1
 
     return
+
 canvas.bind('<Button-1>', leftClick)
 canvas.bind('<Button-2>', middleClick)
 canvas.bind('<Button-3>', rightClick)
