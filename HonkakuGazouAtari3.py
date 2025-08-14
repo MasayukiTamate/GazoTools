@@ -10,29 +10,47 @@ from PIL import Image, ImageTk
 import tkinter.messagebox as msg
 import random
 
+'''変数
+イメージ格納用リスト変数
+イメージその２
+フォルダ名格納リスト変数
+四角リスト変数
+数を格納する変数
+
+'''
 root = 0
 canvas = 0 
 img1 = []
 img2 = []
 folder = []
 j = 0
+k = 0
 rectangles = {}
 num = 0
+'''
+'''
 #基本のウィンドウ作成
 root = tk.Tk()
 root.attributes("-fullscreen", True)
 root.title(str(""))
 
+#《後回し》ウィンドウの縦サイズと横サイズの取得の仕方を考える
 WIDTH =  root.winfo_width()
 HEIGHT = root.winfo_height()
 print(f"{WIDTH=} {HEIGHT=}")
 canvas = tk.Canvas(root, width=3440, height=1440)
 canvas.place(x=0, y=0)
 #ここまで
-file_namae = []
 
+file_namae = []
+'''
+図形のクラス
+'''
 class Zukei:
     def __init__(self,x,y,w,h):
+        '''
+        
+        '''
         self.x = x
         self.y = y
         self.width = w
@@ -40,13 +58,17 @@ class Zukei:
         pass
     def atrari(self):
         pass
-
+'''
+クラスZukeiここまで
+'''
 
 #ダイアログからフォルダ名取得関数
 def GetDiaFolder():
-    
+    '''
+    ダイアログを表示
+    のちにフォルダ名を取得
+    '''    
     #file_path = tk.filedialog.askdirectory(initialdir = dir)
-
 
     x_path = file_path.split("/")
     f_name = file_path[0:len(file_path)-(len(x_path[-1]))]
@@ -54,9 +76,9 @@ def GetDiaFolder():
     files = os.listdir(x)
     
     return files, f_name
-
-#ループ１
-#ループ２
+'''
+関数GetDiaFolder()ここまで
+'''
 #格納したデータを再描画
 def Kurikaesi():
 #    global img1
@@ -68,6 +90,9 @@ def Kurikaesi():
             flag1 = 0
         root.update()
 
+'''
+関数Kurikaesi()ここまで
+'''
 #クリックした画像を一番最後に描写
 def Kurikaesi2(n):
     global num
@@ -76,6 +101,7 @@ def Kurikaesi2(n):
     img4 = [ImageTk.PhotoImage(image.copy()) for image in img1]
     for i in img2:
         canvas.delete(i)
+
     while flag1:
             
         
@@ -109,9 +135,11 @@ def Kurikaesi2(n):
     root.update()
 
 
-#ループ３
+'''
+関数Kurikaesi2()ここまで
+'''
 #取得したフォルダの新しい画像データを読み込む
-#def GetDiaFileName():
+
 def SinByouGa():
 #    global j,img1
     flag2 = 1
@@ -149,11 +177,16 @@ def SinByouGa():
         flag2 = 0
 
     return
-
+'''
+関数SinByouGa()ここまで
+'''
 
 #再描画クリックした画像を一番上
 #子フォルダの取得
 def GetKoFolder(files):
+    '''
+    子フォルダの取得
+    '''
     for f in files:
         o = str(f)
         if not(o[0] == "."):
@@ -168,7 +201,11 @@ def GetKoFolder(files):
         print(f)
 
     return
+'''
+関数GetKoFolder()ここまで
+'''
 
+#終了する時のメゾット
 def owari():
     if msg.askokcancel("", "終わり？"):
 
@@ -180,10 +217,31 @@ def owari():
         return
 
 '''
+関数owari()ここまで
+'''
+
+
+
+
+'''
 ------------------------------------------------------------------------------------------------------------------------
 
 プログラム基本部分
+
+流れ
+→ダイアログでフォルダ名を取得
+→子フォルダ名を取得
+→
+→
+→画像を表示
+
+
+変数
+パス
+ファイル名
+
 '''
+
 
 file_path = tk.filedialog.askopenfilename(initialdir=".")
 
@@ -192,6 +250,7 @@ files, f_name = GetDiaFolder()
 GetKoFolder(files)
 msg.showinfo("","")
 
+#ウィンドウの縦と横のサイズ
 WIDTH =  root.winfo_width()
 HEIGHT = root.winfo_height()
 
@@ -231,7 +290,7 @@ img3 = [ImageTk.PhotoImage(image.copy()) for image in img1]
 
 '''
 --------------------------------------------------------------------------------------------------------------------------------
-アクション
+操作-アクション
 '''
     
 #左クリックアクション
@@ -274,6 +333,7 @@ def leftClick(event):
         Kurikaesi2(rectangle_number)
     return
 
+#リターンボタンアクション
 def ReturnDown(event):
     print("エンター")
     global j,folder
@@ -293,6 +353,7 @@ def ReturnDown(event):
 
     return
 
+#キーイベント
 def key_event(e):
     print(e.keysym)
     global j,folder
@@ -315,6 +376,7 @@ def key_event(e):
 
     return
 
+#操作それぞれ
 canvas.bind('<Button-1>', leftClick)
 canvas.bind('<Button-2>', middleClick)
 canvas.bind('<Button-3>', rightClick)
