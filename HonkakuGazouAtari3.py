@@ -9,6 +9,8 @@ import os
 from PIL import Image, ImageTk
 import tkinter.messagebox as msg
 import random
+import time
+
 
 '''変数
 イメージ格納用リスト変数
@@ -39,6 +41,8 @@ WIDTH =  root.winfo_width()
 HEIGHT = root.winfo_height()
 print(f"{WIDTH=} {HEIGHT=}")
 canvas = tk.Canvas(root, width=3440, height=1440)
+WIDTH =  root.winfo_width()
+HEIGHT = root.winfo_height()
 canvas.place(x=0, y=0)
 #ここまで
 
@@ -161,6 +165,9 @@ def SinByouGa():
                 img1.append(Image.open(open(str(fol)+str(o), 'rb')))
                 img1[i].thumbnail((500, 500), 0)
                 img1[i] = ImageTk.PhotoImage(img1[i])
+
+
+                #乱数
                 x1 = random.randint(0,WIDTH - 500)
                 y1 = random.randint(0,HEIGHT - 500)
                 x2 = x1 + img1[i].width()
@@ -205,6 +212,44 @@ def GetKoFolder(files):
 関数GetKoFolder()ここまで
 '''
 
+def reHyoujiZahyou(sumi, sizeW,sizeH):
+    '''
+    表示する時に４隅にセット
+    '''
+    HidariUe = 0
+    HidariSita = 1
+    MigiUe = 2
+    MigiSita = 3
+    Mannaka = 4
+
+    x1 = 0
+    y1 = 0
+    x2 = 0 + sizeW
+    y2 = 0 + sizeH
+
+    match sumi:
+        case 1:#左下の場合
+            y1 = HEIGHT - sizeH
+            y2 = HEIGHT
+            pass
+        case 2:#右上の場合
+            x1 = WIDTH - sizeW
+            x2 = WIDTH
+            pass
+        case 3:#右下の場合
+            x1 = WIDTH - sizeW
+            y1 = HEIGHT - sizeH
+            x2 = WIDTH
+            y2 = HEIGHT
+            pass
+        case "真ん中":#
+            pass
+        case _:
+            pass
+    
+
+    return x1, y1, x2, y2
+
 #終了する時のメゾット
 def owari():
     if msg.askokcancel("", "終わり？"):
@@ -244,11 +289,11 @@ def owari():
 
 
 file_path = tk.filedialog.askopenfilename(initialdir=".")
-
+ByougaFlag = True
 
 files, f_name = GetDiaFolder()
 GetKoFolder(files)
-msg.showinfo("","")
+msg.showinfo("開始の合図","始めるぞ-いいか-開始-スタート")
 
 #ウィンドウの縦と横のサイズ
 WIDTH =  root.winfo_width()
@@ -259,22 +304,28 @@ HEIGHT = root.winfo_height()
 i = 0
 for f in files:
     o = str(f)
-    if(o[-4:]==".jpg" or o[-4:]==".png"):
+    if(o[-4:]==".jpg" or o[-4:]==".png" or o[-4:]=="webp"):
         
         img1.append(Image.open(open(str(f_name)+str(o), 'rb')))
         img1[i].thumbnail((500, 500), 0)
         img2.append(ImageTk.PhotoImage(img1[i]))
+
+        #乱数
         x1 = random.randint(0,WIDTH -500)
         y1 = random.randint(0,HEIGHT -500)
         x2 = x1 + img2[i].width()
         y2 = y1 + img2[i].height()
         
+        x2 = img2[i].width()
+        y2 = img2[i].height()
 
 
+        x1, y1, x2, y2 = reHyoujiZahyou(int(i % 4), x2, y2)
         rectangle = canvas.create_rectangle(x1, y1, x2, y2, fill="blue")
-
         rectangles[rectangle] = num# 四角形に番号を割り当てる
+
         canvas.create_image(x1,y1,image=img2[i],tag="illust",anchor=tk.NW)
+
 
         root.update()
 
@@ -286,7 +337,8 @@ for f in files:
 
 img3 = [ImageTk.PhotoImage(image.copy()) for image in img1]
 
-
+while ByougaFlag:
+    SinByouGa()
 
 '''
 --------------------------------------------------------------------------------------------------------------------------------
@@ -357,6 +409,8 @@ def ReturnDown(event):
 def key_event(e):
     print(e.keysym)
     global j,folder
+
+
 
     if e.keysym == "Return" or e.keysym == "space":
         if j >= len(folder):
