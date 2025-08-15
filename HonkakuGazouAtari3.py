@@ -29,6 +29,7 @@ j = 0
 k = 0
 rectangles = {}
 num = 0
+FlagPicByousya = True
 '''
 '''
 #基本のウィンドウ作成
@@ -47,6 +48,7 @@ canvas.place(x=0, y=0)
 #ここまで
 
 file_namae = []
+f_name = ""
 '''
 図形のクラス
 '''
@@ -145,24 +147,27 @@ def Kurikaesi2(n):
 #取得したフォルダの新しい画像データを読み込む
 
 def SinByouGa():
-#    global j,img1
+    global j,img1, FlagPicByousya, file_namae
     flag2 = 1
+    k = i
     i = len(img1)
     while flag2:
         x_path = file_path.split("/")
         f_name = file_path[0:len(file_path)-(len(x_path[-1]))]
         x = file_path[:len(file_path)-(len(x_path[-1]))-1]
-        fol = x + "/" + folder[j] + "/"
-        files = os.listdir(fol)
+#        fol = x + "/" + folder[j] + "/"
+#        files = os.listdir(fol)
 
-        msg.showinfo(folder[j],str(len(files)) + "個")
-
-        for f in files:
+#        FlagPicByousya = msg.askokcancel(folder[j],str(len(files)) + "個")
+        i = k
+        for f in f_name:
+#        for f in files:
             o = str(f)
 
-            if(o[-4:]==".jpg" or o[-4:]==".png"):
+            if(o[-4:]==".jpg" or o[-4:]==".png"):# or o[-5:]==".webp"
                 global num
-                img1.append(Image.open(open(str(fol)+str(o), 'rb')))
+#                img1.append(Image.open(open(str(fol)+str(o), 'rb')))
+                img1.append(Image.open(open(str(f_name)+str(o), 'rb')))
                 img1[i].thumbnail((500, 500), 0)
                 img1[i] = ImageTk.PhotoImage(img1[i])
 
@@ -179,8 +184,9 @@ def SinByouGa():
 
                 num = num + 1
                 i = i + 1
+                print(f"{img1[i]=}")
                 root.update()
-        
+        print(f"{f_name=}")
         flag2 = 0
 
     return
@@ -200,7 +206,8 @@ def GetKoFolder(files):
             if len(o) >= 4:
                 if not(o[-4]=="."):
                     if not(o[-3]=="."):
-                        folder.append(o)
+                        if not(o[-5=="."]):
+                            folder.append(o)
             else:
                 folder.append(o)
 
@@ -288,7 +295,10 @@ def owari():
 '''
 
 
+file_path = tk.filedialog.askdirectory(initialdir=".")
+print(f"{file_path=}")
 file_path = tk.filedialog.askopenfilename(initialdir=".")
+print(f"{file_path=}")
 ByougaFlag = True
 
 files, f_name = GetDiaFolder()
@@ -304,7 +314,7 @@ HEIGHT = root.winfo_height()
 i = 0
 for f in files:
     o = str(f)
-    if(o[-4:]==".jpg" or o[-4:]==".png" or o[-4:]=="webp"):
+    if(o[-4:]==".jpg" or o[-4:]==".png" or o[-5:]==".webp"):
         
         img1.append(Image.open(open(str(f_name)+str(o), 'rb')))
         img1[i].thumbnail((500, 500), 0)
@@ -337,8 +347,9 @@ for f in files:
 
 img3 = [ImageTk.PhotoImage(image.copy()) for image in img1]
 
-while ByougaFlag:
+while FlagPicByousya:
     SinByouGa()
+    time.sleep(3)
 
 '''
 --------------------------------------------------------------------------------------------------------------------------------
