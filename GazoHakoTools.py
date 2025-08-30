@@ -2,15 +2,24 @@
 Created on 2025 08 27
 
 @author: tamate masayuki
+
+hakoNamae~BoxName
+namaeHenkou=nameChange
+hajimari=begins,start
+
 '''
 import tkinter as tk
 import tkinter.simpledialog
+import tkinter.filedialog
+import os
 
 
 WIDTH =  200
 HEIGHT = 200
 WS = ""
 WINDOWSSIZE = "".join([str(WIDTH),"x",str(HEIGHT)])
+
+dirName = "新しいフォルダ"
 
 HakoNamae = []
 DEFHAKOANMAE = ["色々、保存する箱"]
@@ -41,7 +50,16 @@ def namaeHenkou():
         for hk in Hako:
             hk.pack()
 
+def kaisouHenkou():
+    iDir = os.path.abspath(os.path.dirname(__file__))
+    with tkinter.filedialog.askdirectory(initialdir=iDir) as Dnamae:
+        try:  # 以下の処理を実行
+            dirName = Dnamae
+            print(dirName)  # fの中身を表示する
+        except FileNotFoundError as err:  # FileNotFoundErrorが発生した場合、以下の処理を実行
+            print(err)  # errの中身を表示
 
+    pass
 
 
 #基本のウィンドウ作成
@@ -54,18 +72,21 @@ root.title(str(""))
 #ボタンの作成
 Hako = []
 for hn in HakoNamae:
-    Hako.append(tk.Button(root,text=hn, command=Hajimari,width=int(WIDTH/10),height=int(HEIGHT/22)))
+    Hako.append(tk.Button(root,text=hn+dirName, command=Hajimari,width=int(WIDTH/10),height=int(HEIGHT/22)))
 for hk in Hako:
     hk.pack()
 
 pmenu = tk.Menu(root, tearoff=0)
 pmenu.add_command(label="名前変更", command=namaeHenkou)
+pmenu.add_command(label="フォルダ指定",command=kaisouHenkou)
 pmenu.add_command(label="Exit", command=root.quit)
 
 
 geo_label = tk.Label(root, bg="lightblue", font=("Helvetica", "17"))
 geo_label.pack(anchor="center", expand=1)
 
+
+#アプデ予定：右クリック＋座標またはどのボタンの上かを引数にして命令を続ける
 root.bind("<Button-3>", showMenu)
 root.bind("<Configure>", show_geometry_info)
 
