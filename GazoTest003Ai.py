@@ -66,37 +66,24 @@ _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
 def Hajimari():
     '''
-    子窓を作成のち画像表示
-    予定：フォルダ内の画像をランダムで表示
-    予定：同じ画像は出てほしくない
-    予定：フォルダ内の画像をリスト化してテキストボックスに表示
-    予定：テキストボックスで選択した画像を表示
-    予定：フォルダ内の画像をサムネイルで表示
-    予定：サムネイルをクリックしたらその画像を表示
+    ボタンを押すと新しいウィンドウで画像表示
     '''
-    Gazo = tk.Tk()
-    Gazo.geometry("500x500")
-    Gazo.title("画像１")
-    GazoCanvas = tk.Canvas(Gazo, width=100, height=50)
+    Gazo = tk.Toplevel()
+    Gazo.geometry("220x220")
+    Gazo.title("画像表示")
+    GazoCanvas = tk.Canvas(Gazo, width=200, height=200)
     GazoCanvas.pack()
-#    label = tk.Label(Gazo, bg="lightblue", font=("Helvetica", "17"))
-#    label.pack(anchor="center", expand=1)
-#    label["text"] = dirName
-    fileStr = dirName
-    #ランダムで表示する＋同じ絵は出てほしくない
-    fname = os.listdir(fileStr)
-    tkimg = None
-    if fname[0].lower().endswith(('.jpg', ".jpeg", '.png', '.webp')):
-        fpath = os.path.join(fileStr, fname[0])
-        try:
-            img.append(Image.open(fpath))
-            img[-1].thumbnail((500, 500))
-            tkimg = ImageTk.PhotoImage(img[-1])
-            GazoCanvas.image = tkimg  # 参照を保持
-            GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
-        except Exception as e:
-            print(f"画像表示エラー: {e}")
-    Gazo.mainloop()
+    # 画像表示
+    img_path = fullFileName
+    try:
+        img = Image.open(img_path)
+        img.thumbnail((200, 200))
+        tkimg = ImageTk.PhotoImage(img)
+        # 参照保持しないとGCで消えるのでCanvasに保持
+        GazoCanvas.image = tkimg
+        GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
+    except Exception as e:
+        print(f"画像表示エラー: {e}")
     pass
 
 def zGazoHyoji(GazoCanvas,fileStr):
@@ -161,14 +148,11 @@ def kaisouHenkou(event, root):
 
 def HakoSakusei(root):
     '''
-    ボタンの作成'''
-    Hako = []
+    ボタンの作成
+    '''
     for hn in HakoNamae:
-        Hako.append(tk.Button(root,text=hn+"\n"+dirName, command = lambda : Hajimari(),width=int(WIDTH/10),height=int(HEIGHT/22)))
-    for hk in Hako:
-        hk.pack()
-
-    pass
+        btn = tk.Button(root, text=hn + "\n" + dirName, command=Hajimari, width=int(WIDTH/10), height=int(HEIGHT/22))
+        btn.pack()
 
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 メイン
