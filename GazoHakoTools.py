@@ -19,6 +19,7 @@ import tkinter.simpledialog
 import tkinter.filedialog
 import os
 from PIL import Image, ImageTk
+import random
 
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 各パラメータ
@@ -42,8 +43,8 @@ HEIGHT = 200
 WINDOWSSIZE = "".join([str(WIDTH),"x",str(HEIGHT)])
 
 
-#dirName = "K:\\100-eMomo"
 dirName = "C:\\Users\\manaby\\Pictures"
+dirName = "K:\\100-eMomo"
 fileName = "壁紙001.jpg"
 fullFileName = dirName + "\\" + fileName
 
@@ -66,41 +67,74 @@ _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
 def Hajimari():
     '''
-    子窓を作成のち画像表示
-    予定：フォルダ内の画像をランダムで表示
-    予定：同じ画像は出てほしくない
-    予定：フォルダ内の画像をリスト化してテキストボックスに表示
-    予定：テキストボックスで選択した画像を表示
-    予定：フォルダ内の画像をサムネイルで表示
-    予定：サムネイルをクリックしたらその画像を表示
+    子窓の設定
+    ↓
+    画像のデータを取得
+
+    画僧のデータを取得
+    ↓
+    子窓のサイズを決める
+    ↓
+    描画
     '''
+
+
+
+    
+ 
+    fn = ""
+    #ファイル群を取得
+    fname = os.listdir(dirName)
+    
+    while not fn.lower().endswith((".jpg",".jpeg",".png",".webg")):
+        sai = random.randint(0,len(fname))
+        fn = fname[sai]
+    print(fn)
+    img_path = dirName + "\\" + fn
+
+#try:    
+    img = Image.open(img_path)
+    img.thumbnail((1000, 1000))
+    tkimg = ImageTk.PhotoImage(img)
+    # 参照保持しないとGCで消えるのでCanvasに保持
+
+#    except Exception as e:
+#        print(f"画像表示エラー: {e}")
+    
+    width = tkimg.width()
+    height = tkimg.height()
+    x, y = randPoint(width,height)
 
     Gazo = tk.Toplevel()
-    Gazo.geometry("220x220")
-    Gazo.title("画像表示")
-    GazoCanvas = tk.Canvas(Gazo, width=200, height=200)
-    GazoCanvas.pack()
-    # 画像表示
-    img_path = fullFileName
-    try:
-        img = Image.open(img_path)
-        img.thumbnail((200, 200))
-        tkimg = ImageTk.PhotoImage(img)
-        # 参照保持しないとGCで消えるのでCanvasに保持
-        GazoCanvas.image = tkimg
-        GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
-    except Exception as e:
-        print(f"画像表示エラー: {e}")
+    Gazo.geometry("".join([str(width),"x",str(height),"+",str(x),"+",str(y)]))
+    Gazo.title(fn)
+    GazoCanvas = tk.Canvas(Gazo, width=width,height=height)
+    GazoCanvas.pack()    
+    GazoCanvas.image = tkimg
+    GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
+
     pass
 
-def zGazoHyoji(GazoCanvas,fileStr):
+def randPoint(width, height):
     '''
-    画像表示
+    乱数作成　ポイント
     '''
-#    img.append(ImageTk.open(open(str(fileStr),"rb")))
-    img.append(ImageTk.PhotoImage(file=str(fullFileName)))
-    GazoCanvas.create_image(0,0,image=img,tag="illust",anchor="nw")
-    pass
+    x = random.randint(0,2400-width)
+    y = random.randint(0,1600-height)
+    print(f"{width=} {height=} {x=} {y=}")   
+    return x, y
+
+def randPointAndSize():
+    '''
+    乱数生成　ポイントとサイズ
+    '''
+    height = random.randint(12,31) * 50
+    width = int(height * (3/4))
+
+    x = random.randint(0,2400-width)
+    y = random.randint(0,1600-height)
+
+    return x, y, width, height    
 
 def hako_info(event, hakoLabel):
     '''
@@ -213,3 +247,18 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+    '''
+    子窓を作成のち画像表示
+    予定：フォルダ内の画像をランダムで表示
+    予定：同じ画像は出てほしくない
+    予定：フォルダ内の画像をリスト化してテキストボックスに表示
+    予定：テキストボックスで選択した画像を表示
+    予定：フォルダ内の画像をサムネイルで表示
+    予定：サムネイルをクリックしたらその画像を表示
+    '''
