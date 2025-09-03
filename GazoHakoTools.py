@@ -42,7 +42,7 @@ WINDOWSSIZE = "".join([str(WIDTH),"x",str(HEIGHT)])
 
 dirName = "K:\\100-eMomo"#環境１
 dirName = "C:\\Users\\manaby\\Pictures"#環境２
-dirName = "C:\\Users\\横浜関内駅前事業所"#環境３
+dirName = "C:\\Users\\"#環境３
 
 fileName = "壁紙001.jpg"
 fullFileName = dirName + "\\" + fileName
@@ -154,7 +154,7 @@ def showMenu(event, pmenu):
     '''
     pmenu.post(event.x_root, event.y_root)
 
-def namaeHenkou(event, root):
+def namaeHenkou( root):
     '''
     ボタンの名前を変更
     '''
@@ -169,7 +169,7 @@ def namaeHenkou(event, root):
         for hk in Hako:
             hk.pack()
 
-def kaisouHenkou(event, root):
+def kaisouHenkou():
     '''
     フォルダの指定'''
     global dirName
@@ -181,8 +181,6 @@ def kaisouHenkou(event, root):
 
     dirName = iDirPath
     print(dirName)  # fの中身を表示する
-
-
     pass
 
 def HakoSakusei(root):
@@ -200,7 +198,11 @@ def PopupMenuCreate(root):
     '''
     ポップアップメニューの作成
     '''
-    pass
+    pmenu = tk.Menu(root, tearoff=0)
+    pmenu.add_command(label="名前変更", command= lambda event: namaeHenkou(root))
+    pmenu.add_command(label="フォルダ指定", command= lambda event: kaisouHenkou())
+    pmenu.add_command(label="Exit", command=root.quit)
+    return pmenu
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 メイン
 
@@ -225,11 +227,8 @@ def main():
 
     #ボタンの作成
     HakoSakusei(root)
+    pmenu = PopupMenuCreate(root)
 
-    pmenu = tk.Menu(root, tearoff=0)
-    pmenu.add_command(label="名前変更", command= lambda event: namaeHenkou(event, root))
-    pmenu.add_command(label="フォルダ指定", command= lambda event: kaisouHenkou(event, root))
-    pmenu.add_command(label="Exit", command=root.quit)
 
     hakoLabel = tk.Label(root, bg="lightblue", font=("Helvetica", "17"))
     geo_label = tk.Label(root, bg="lightblue", font=("Helvetica", "17"))
