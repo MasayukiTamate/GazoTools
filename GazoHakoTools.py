@@ -4,15 +4,15 @@ Created on 2025 08 27
 @author: tamate masayuki
 
 英単語化
-hakoNamae~BoxName
+hakoNamae=BoxName
 namaeHenkou=nameChange
 hajimari=begins,start
 
 今後の予定
 フォルダを取得するときに子フォルダも取得する
 ファイルのリスト化
-ファイルのリストをテキストボックスで表示
-
+ファイルのリストをテキストボックスで表示-2025-09-03
+_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_
 '''
 import tkinter as tk
 import tkinter.simpledialog
@@ -20,12 +20,11 @@ import tkinter.filedialog
 import os
 from PIL import Image, ImageTk
 import random
-
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
-各パラメータ
+グローバル変数の各パラメータ
 メインウィンドウの幅
 高さ
-TK様式のウィンドウサイズ定数
+TK様式のウィンドウサイズ定数と様式に変換の式
 
 初期パス
 デバック用ファイル名
@@ -37,14 +36,14 @@ TK様式のウィンドウサイズ定数
 for文-ボタンのデフォルト名の数の分-作成-要らない工程？
 _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
-
 WIDTH =  200
 HEIGHT = 200
 WINDOWSSIZE = "".join([str(WIDTH),"x",str(HEIGHT)])
 
+dirName = "K:\\100-eMomo"#環境１
+dirName = "C:\\Users\\manaby\\Pictures"#環境２
+dirName = "C:\\Users\\横浜関内駅前事業所"#環境３
 
-dirName = "C:\\Users\\manaby\\Pictures"
-dirName = "K:\\100-eMomo"
 fileName = "壁紙001.jpg"
 fullFileName = dirName + "\\" + fileName
 
@@ -67,10 +66,6 @@ _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
 def Hajimari():
     '''
-    子窓の設定
-    ↓
-    画像のデータを取得
-
     画僧のデータを取得
     ↓
     子窓のサイズを決める
@@ -87,7 +82,7 @@ def Hajimari():
     fname = os.listdir(dirName)
     
     while not fn.lower().endswith((".jpg",".jpeg",".png",".webg")):
-        sai = random.randint(0,len(fname))
+        sai = random.randint(0,len(fname)-1)
         fn = fname[sai]
     print(fn)
     img_path = dirName + "\\" + fn
@@ -115,24 +110,27 @@ def Hajimari():
 
     pass
 
+
+DISPLAY_W = 2400
+DISPLAY_H = 1600
 def randPoint(width, height):
     '''
-    乱数作成　ポイント
+    乱数作成関数で戻り値がポイント
     '''
-    x = random.randint(0,2400-width)
-    y = random.randint(0,1600-height)
+    x = random.randint(0,DISPLAY_W-width)
+    y = random.randint(0,DISPLAY_H-height)
     print(f"{width=} {height=} {x=} {y=}")   
     return x, y
 
 def randPointAndSize():
     '''
-    乱数生成　ポイントとサイズ
+    乱数生成関数で戻り値がポイントとサイズ
     '''
     height = random.randint(12,31) * 50
     width = int(height * (3/4))
 
-    x = random.randint(0,2400-width)
-    y = random.randint(0,1600-height)
+    x = random.randint(0,DISPLAY_W-width)
+    y = random.randint(0,DISPLAY_H-height)
 
     return x, y, width, height    
 
@@ -198,6 +196,11 @@ def HakoSakusei(root):
 
     pass
 
+def PopupMenuCreate(root):
+    '''
+    ポップアップメニューの作成
+    '''
+    pass
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 メイン
 
@@ -218,10 +221,6 @@ def main():
     root.attributes("-topmost",True)
     root.geometry(WINDOWSSIZE)
 
- #   canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT)
- #   canvas.pack()
-
-    
 
 
     #ボタンの作成
