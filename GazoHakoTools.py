@@ -14,10 +14,13 @@ hajimari=begins,start
 ファイルのリストをテキストボックスで表示-2025-09-03
 _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_
 '''
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))  # これをimport文の一番上に
+
 import tkinter as tk
 import tkinter.simpledialog
 import tkinter.filedialog
-import os
 from PIL import Image, ImageTk
 import random
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
@@ -52,7 +55,7 @@ HakoNamae = []
 DEFHAKOANMAE = ["色々、保存する箱"]
 for n in DEFHAKOANMAE:
     HakoNamae.append(n)
-'''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
+'''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 関数群
 hajimari=StartPreparation
 GazoHyouji=PicterDraw
@@ -72,7 +75,7 @@ def Hajimari():
     ↓
     描画
     '''
-
+    from GazoToolsLib2 import GetKoFolder
 
 
     
@@ -80,10 +83,24 @@ def Hajimari():
     fn = ""
     #ファイル群を取得
     fname = os.listdir(dirName)
-    
+    # 間違い
+    # dirNames = GetKoFolder(os.listdir(dirName))
+    # 正しい
+    dirNames = GetKoFolder(os.listdir(dirName), dirName)
+    print(f"{dirNames=}")
+    #最下層のフォルダまで探索してファイル群を取得
+    #複数のフォルダからファイル群を取得
+
+
+    count = 0
+
     while not fn.lower().endswith((".jpg",".jpeg",".png",".webg")):
         sai = random.randint(0,len(fname)-1)
         fn = fname[sai]
+        count += 1
+        if count > len(fname):
+            print("画像ファイルが見つかりません")
+            return
     print(fn)
     img_path = dirName + "\\" + fn
 
