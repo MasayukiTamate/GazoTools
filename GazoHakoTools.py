@@ -128,6 +128,8 @@ def Hajimari():
     pass
 
 
+#ディスプレイのサイズが取得できるようになったら別のファイルに移動
+#DISPLAY_W, DISPLAY_H = GetDisplaySize()
 DISPLAY_W = 2400
 DISPLAY_H = 1600
 def randPoint(width, height):
@@ -220,7 +222,21 @@ def PopupMenuCreate(root):
     pmenu.add_command(label="フォルダ指定", command= lambda event: kaisouHenkou())
     pmenu.add_command(label="Exit", command=root.quit)
     return pmenu
-'''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
+
+def CreateKoWindow():
+    '''
+    子ウィンドウの作成  予定
+    '''
+    koWindowRoot = tk.Tk()
+    koWindowRoot.attributes("-topmost",True)
+    koWindowRoot.geometry(WINDOWSSIZE)
+    textbox = tk.Text(koWindowRoot, width=40, height=120)
+    textbox.pack()
+
+    koWindowRoot.mainloop()
+    pass
+
+'''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 メイン
 
 メイン内で行っている事
@@ -240,7 +256,7 @@ def main():
     root.attributes("-topmost",True)
     root.geometry(WINDOWSSIZE)
 
-
+ 
 
     #ボタンの作成
     HakoSakusei(root)
@@ -257,7 +273,7 @@ def main():
     root.bind("<Configure>", lambda event: hako_info(event, hakoLabel))
     root.bind("<Configure>", lambda event: show_geometry_info(event, root, geo_label))
 
-    
+    print(root.geometry())
     root.mainloop()
 
 if __name__ == "__main__":
