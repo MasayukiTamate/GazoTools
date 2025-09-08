@@ -67,7 +67,7 @@ kaisouHenkou=なんとかfolderChange
 HakoSakusei=boxcreate
 _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
-def Hajimari():
+def Hajimari(textbox):
     '''
     画僧のデータを取得
     ↓
@@ -78,8 +78,8 @@ def Hajimari():
     from GazoToolsLib2 import GetKoFolder
 
 
-    
- 
+
+
     fn = ""
     #ファイル群を取得
     fname = os.listdir(dirName)
@@ -88,6 +88,9 @@ def Hajimari():
     # 正しい
     dirNames = GetKoFolder(os.listdir(dirName), dirName)
     print(f"{dirNames=}")
+    print(type(dirNames))
+    s = fname
+    textbox.insert('0.5',"\n".join(dirNames) )
     #最下層のフォルダまで探索してファイル群を取得
     #複数のフォルダからファイル群を取得
 
@@ -104,15 +107,12 @@ def Hajimari():
     print(fn)
     img_path = dirName + "\\" + fn
 
-#try:    
+
     img = Image.open(img_path)
     img.thumbnail((1000, 1000))
     tkimg = ImageTk.PhotoImage(img)
-    # 参照保持しないとGCで消えるのでCanvasに保持
 
-#    except Exception as e:
-#        print(f"画像表示エラー: {e}")
-    
+
     width = tkimg.width()
     height = tkimg.height()
     x, y = randPoint(width,height)
@@ -121,7 +121,7 @@ def Hajimari():
     Gazo.geometry("".join([str(width),"x",str(height),"+",str(x),"+",str(y)]))
     Gazo.title(fn)
     GazoCanvas = tk.Canvas(Gazo, width=width,height=height)
-    GazoCanvas.pack()    
+    GazoCanvas.pack()
     GazoCanvas.image = tkimg
     GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
 
@@ -138,7 +138,7 @@ def randPoint(width, height):
     '''
     x = random.randint(0,DISPLAY_W-width)
     y = random.randint(0,DISPLAY_H-height)
-    print(f"{width=} {height=} {x=} {y=}")   
+    print(f"{width=} {height=} {x=} {y=}")
     return x, y
 
 def randPointAndSize():
@@ -151,7 +151,7 @@ def randPointAndSize():
     x = random.randint(0,DISPLAY_W-width)
     y = random.randint(0,DISPLAY_H-height)
 
-    return x, y, width, height    
+    return x, y, width, height
 
 def hako_info(event, hakoLabel):
     '''
@@ -202,12 +202,12 @@ def kaisouHenkou():
     print(dirName)  # fの中身を表示する
     pass
 
-def HakoSakusei(root):
+def HakoSakusei(root,textbox):
     '''
     ボタンの作成'''
     Hako = []
     for hn in HakoNamae:
-        Hako.append(tk.Button(root,text=hn+"\n"+dirName, command = lambda : Hajimari(),width=int(WIDTH/10),height=int(HEIGHT/22)))
+        Hako.append(tk.Button(root,text=hn+"\n"+dirName, command = lambda : Hajimari(textbox),width=int(WIDTH/10),height=int(HEIGHT/30)))
     for hk in Hako:
         hk.pack()
 
@@ -233,8 +233,8 @@ def CreateKoWindow():
     textbox = tk.Text(koWindowRoot, width=40, height=120)
     textbox.pack()
 
-    koWindowRoot.mainloop()
-    pass
+    return textbox
+
 
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 メイン
@@ -248,7 +248,7 @@ _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
 def main():
     '''
-    
+
     '''
 
     #基本のウィンドウ作成
@@ -256,15 +256,16 @@ def main():
     root.attributes("-topmost",True)
     root.geometry(WINDOWSSIZE)
 
- 
 
     #ボタンの作成
-    HakoSakusei(root)
+    koTextBox = CreateKoWindow()
+    HakoSakusei(root, koTextBox)
     pmenu = PopupMenuCreate(root)
 
 
+
     hakoLabel = tk.Label(root, bg="lightblue", font=("Helvetica", "17"))
-    geo_label = tk.Label(root, bg="lightblue", font=("Helvetica", "17"))
+    geo_label = tk.Label(root, bg="lightblue", font=("Helvetica", "7"))
     geo_label.pack(anchor="center", expand=1)
 
 
