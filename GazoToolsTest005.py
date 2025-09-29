@@ -12,7 +12,7 @@ Created on 2025 09 29
 from lib.GazoToolsBasicLib import tkConvertWinSize
 import tkinter as tk
 from PIL import ImageTk, Image
-import time
+from tkinterdnd2 import *
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -45,6 +45,9 @@ class GazoPicture():
         GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
         pass
 
+def drop(event):
+    print(event.data)
+    text.set(event.data)
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_//_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 
 メイン
@@ -62,17 +65,30 @@ class GazoPicture():
 メインループ（）
 _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
-
+DADTEXT = "ドラッグアンドドロップしてください"
 TKWINSIZEANDXY = tkConvertWinSize(list([200, 200, 400, 20]))
 TKWINSIZEANDXY = tkConvertWinSize(list([200, 200]))
 
+#主窓
 root = tk.Tk()
 root.geometry(TKWINSIZEANDXY)
+#子窓
+koRoot = TkinterDnD.Tk()
+koRoot.geometry(TKWINSIZEANDXY)
+koRoot.title(DADTEXT)
 
-
+#画像窓
+#スイッチで表示
 Gazo = GazoPicture()#画像窓出した
-
-
 Gazo.Drawing()
+
+
+#子窓のラベル
+text = tk.StringVar(koRoot)
+DADTEXT = "ドラッグアンドドロップ\nしてください"
+DADLabel = tk.Label(koRoot, text=DADTEXT, bg="lightblue", font=("Helvetica", "10"))
+DADLabel.drop_target_register(DND_FILES)
+DADLabel.dnd_bind("<>",drop)
+DADLabel.grid(row=0, column=0, padx=2)
 
 root.mainloop()

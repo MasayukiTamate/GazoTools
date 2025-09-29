@@ -8,6 +8,9 @@ Created on 2025 09 29
 
 
 def tkConvertWinSize(tateyokoList):
+    '''
+    最初にサイズの文字の場合も対応する予定
+    '''
     res = ""
     dec = "","x","+","+"
 
