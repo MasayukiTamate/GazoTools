@@ -1,5 +1,5 @@
 import unittest
-from GazoHakoTools import Hajimari
+from above.GazoHakoTools import Hajimari
 
 class TestGazoHakoTools(unittest.TestCase):
     def test_hajimari(self):

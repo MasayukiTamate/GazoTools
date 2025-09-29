@@ -20,28 +20,3 @@ def GetKoFolder(files, base_path="."):
     for f in folder:
         print(f)
     return folder
-
-
-'''
-def GetKoFolder(files):
-
-    子フォルダの取得
-
-    folder = []
-
-    for f in files:
-        o = str(f)
-        if not(o[0] == "."):
-            if len(o) >= 4:
-                if not(o[-4]=="."):
-                    if not(o[-3]=="."):
-                        if not(o[-5]=="."):
-                            folder.append(o)
-            else:
-                folder.append(o)
-
-    for f in folder:
-        print(f)
-
-    return folder
-'''

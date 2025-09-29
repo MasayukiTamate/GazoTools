@@ -75,7 +75,7 @@ def Hajimari(textbox):
     ↓
     描画
     '''
-    from GazoToolsLib2 import GetKoFolder
+    from above.GazoToolsLib2 import GetKoFolder
 
 
 
