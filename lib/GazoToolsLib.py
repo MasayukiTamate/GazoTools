@@ -20,3 +20,5 @@ def GetKoFolder(files, base_path="."):
     for f in folder:
         print(f)
     return folder
+
+def GetFiles()
