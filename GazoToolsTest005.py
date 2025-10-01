@@ -95,7 +95,7 @@ print(GetKoFolder(os.listdir(DEFOLDER)))
 Gazo = GazoPicture()#画像窓出した
 Gazo.Drawing()
 
-
+   
 #子窓のラベル
 text = tk.StringVar(koRoot)
 DADTEXT = "ドラッグアンドドロップ\nしてください"
