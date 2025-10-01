@@ -77,8 +77,8 @@ def drop(event):
 _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
 DADTEXT = "ドラッグアンドドロップしてください"
-TKWINSIZEANDXY = tkConvertWinSize(list([200, 100, 400, 20]))
 TKWINSIZEANDXY = tkConvertWinSize(list([200, 100]))
+TKWINSIZEANDXY = tkConvertWinSize(list([200, 100, 200, 20]))
 
 #主窓
 root = tk.Tk()
@@ -86,7 +86,8 @@ root.geometry(TKWINSIZEANDXY)
 root.title("画像tools")
 #子窓
 koRoot = TkinterDnD.Tk()
-koRoot.geometry(TKWINSIZEANDXY)
+KOWINDSIZEXY = tkConvertWinSize(list([200, 100, 200+200, 20]))
+koRoot.geometry(KOWINDSIZEXY)
 koRoot.title(DADTEXT)
 
 
