@@ -89,13 +89,13 @@ koRoot.geometry(TKWINSIZEANDXY)
 koRoot.title(DADTEXT)
 
 print(os.listdir(DEFOLDER))
-print(GetKoFolder(os.listdir(DEFOLDER)))
+print(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
 
 
 #画像窓
 #スイッチで表示
 Gazo = GazoPicture()#画像窓出した
-Gazo.Drawing()
+#Gazo.Drawing()
 
    
 #子窓のラベル
