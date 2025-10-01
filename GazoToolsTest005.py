@@ -16,8 +16,10 @@ import tkinter as tk
 from PIL import ImageTk, Image
 from tkinterdnd2 import *
 
+
 DEFOLDER = "C:\\最強に最高に最強\\"
 #DEFOLDER = "C:\\Windows"
+DEFOLDER = "C:\\"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 

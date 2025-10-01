@@ -3,7 +3,7 @@ Created on 2025 09 04
 
 
 '''
-print("GazoToolsLib.py loaded!　ロードしたぞ")  # 追加
+print("GazoToolsLib.py loaded!　ロードを確認")  # 追加
 import os
 
 #子フォルダの取得
@@ -21,4 +21,6 @@ def GetKoFolder(files, base_path="."):
         print(f)
     return folder
 
-def GetFiles()
+def GetFiles(folder):
+    Files = []
+    return Files 
