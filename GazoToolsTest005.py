@@ -10,16 +10,17 @@ Created on 2025 09 29
 
 '''
 from lib.GazoToolsBasicLib import tkConvertWinSize
-from lib.GazoToolsLib import GetKoFolder
+from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
 import os
 import tkinter as tk
 from PIL import ImageTk, Image
 from tkinterdnd2 import *
+import random
 
-
-DEFOLDER = "C:\\最強に最高に最強\\"
 #DEFOLDER = "C:\\Windows"
 DEFOLDER = "C:\\"
+DEFOLDER = "K:\\格納-V\\新しいフォルダー"
+DEFOLDER = "C:\\最強に最高に最強\\"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -29,27 +30,51 @@ _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
 class HakoData():
     def __init__(self):
-        StartFolder = "c:"
+        self.StartFolder = "c:"
+        self.GazoFiles = []
+        self.GazoDrawingFlag = []
+        self.GazoDrawingNumFlag = []
         pass
+    def GetGazoFiles(self, GazoFiles):
+        self.GazoFiles.append(GazoFiles)
+        
+        for _ in range(len(GazoFiles)):
+            self.GazoDrawingFlag.append(0)
+        pass
+    def RandamGazoSet(self):
+        number = int(random.random(0,len(self.GazoFiles)))
+        if not number in self.GazoDrawingNumFlag:
+            self.GazoDrawingNumFlag.append(number)
+            self.GazoDrawingFlag[number] = "1"
+        
+        return self.GazoFiles[number]
 
 class GazoPicture():
     def __init__(self):
 
         self.StartFolder = "c:"
         pass
-    def Drawing(self):
-        self.folder = ""
-        imageFolder = self.folder
-#        img = Image.open("C:\\Teisyutubutu\\GazoTools\\data\\folder_32.png")
-        img = Image.open("C:\\最強に最高に最強\\0-5bca3cde-4992-4ccc-9ca5-257c5782f870.png")
+    def SetFolder(self, folder):
+        self.StartFolder = folder
+
+    def Drawing(self, fileName):
+        imageFolder = self.StartFolder
+#        print(f"{imageFolder=} {fileName=}")
+        fullName = imageFolder + "\\" + fileName
+        print(f"{fullName=}")
+        img = Image.open(fullName)
+        
+        img = img.resize([int(img.width / 2 ),int(img.width / 2)])
         tkimg = ImageTk.PhotoImage(img)
         width = tkimg.width()
         height = tkimg.height()
 
-        Gazo = tk.Toplevel()
+        
+        Gazo = tk.Tk()
         GAZOSIZEXY = tkConvertWinSize(list([width, height, 400 + 200, 20]))
         Gazo.geometry(GAZOSIZEXY)
         GazoCanvas = tk.Canvas(Gazo, width=width,height=height)
+        
         GazoCanvas.pack()
         GazoCanvas.image = tkimg
         GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
@@ -91,22 +116,27 @@ koRoot.geometry(KOWINDSIZEXY)
 koRoot.title(DADTEXT)
 
 
-ZanFolder = []
+ZanFolders = []
 
+ZanFolders.append(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
+#print(f"{ZanFolders=}")
 
-ZanFolder.append(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
-
-sefety = 0
-print(f"{ZanFolder=}")
-for ZanFo in ZanFolder:
-    for z in ZanFo:
-        print(f"{z=}")
-
+ZanGazoFiles = []
+ZanGazoFiles.append(GetGazoFiles(os.listdir(DEFOLDER),DEFOLDER))
+#print(f"{ZanGazoFiles=}")
 
 #画像窓
 #スイッチで表示
-Gazo = GazoPicture()#画像窓出した
-#Gazo.Drawing()
+
+GazoWindows = []
+GazoPic = []
+
+#GazoWindows.append(tk.Tk())
+
+Gazo = GazoPicture()
+
+Gazo.SetFolder(DEFOLDER)
+
 
    
 #子窓のラベル

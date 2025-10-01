@@ -15,13 +15,19 @@ def GetKoFolder(files, base_path):
     for f in files:
         if not str(f).startswith("."):
             full_path = os.path.join(base_path, f)
-            print(f"{full_path=}")
             if os.path.isdir(full_path):
                 folder.append(f)
-    for f in folder:
-        print(f)
+
     return folder
 
-def GetFiles(folder):
+def GetGazoFiles(folder, base_path):
+    '''
+    
+    '''
     Files = []
+    for f in folder:
+        full_path = os.path.join(base_path, f)
+        if str(f).endswith(".jpg") or str(f).endswith(".png") or str(f).endswith(".webp"):
+            Files.append(f)
+
     return Files 
