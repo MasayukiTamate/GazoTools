@@ -55,9 +55,10 @@ class GazoPicture():
         GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
         pass
 
-#def drop(event):
-#    print(event.data)
-#    text.set(event.data)
+def drop(event):
+    print(event.data)
+    text.set(event.data)
+    pass
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_//_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 
 メイン
@@ -88,8 +89,17 @@ koRoot = TkinterDnD.Tk()
 koRoot.geometry(TKWINSIZEANDXY)
 koRoot.title(DADTEXT)
 
-print(os.listdir(DEFOLDER))
-print(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
+
+ZanFolder = []
+
+
+ZanFolder.append(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
+
+sefety = 0
+print(f"{ZanFolder=}")
+for ZanFo in ZanFolder:
+    for z in ZanFo:
+        print(f"{z=}")
 
 
 #画像窓
@@ -101,9 +111,9 @@ Gazo = GazoPicture()#画像窓出した
 #子窓のラベル
 text = tk.StringVar(koRoot)
 DADTEXT = "ドラッグアンドドロップ\nしてください"
-DADLabel = tk.Label(koRoot, text=DADTEXT, bg="lightblue", font=("Helvetica", "10"))
+DADLabel = tk.Label(koRoot, text=text, bg="lightblue", font=("Helvetica", "10"))
 DADLabel.drop_target_register(DND_FILES)
-#DADLabel.dnd_bind("<>",drop)
+DADLabel.dnd_bind("<<Drop>>",drop)
 DADLabel.grid(row=0, column=0, padx=2)
 
 root.mainloop()
