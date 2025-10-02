@@ -102,6 +102,28 @@ def drop(event):
     print(event.data)
     text.set(event.data)
     pass
+
+def GazoRoad( gp, fileName):
+    gp.Drawing(fileName)
+    root.after(1000,GazoRoad)
+    pass
+
+class Gazoload():
+    def __init__(self):
+        self.count = 0
+        pass
+
+    def load(self, gp, fileName):
+        '''
+        
+        '''
+        self.count = self.count + 1
+        gp.Drawing(fileName)
+
+        if self.count > 10:
+            root.after(100, self.load)
+        pass
+
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_//_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 
 メイン
@@ -160,14 +182,20 @@ GazoPic = []
 
 e = str(ZanGazoFiles[0][0])
 
+GazoPictureData = [GazoPicture() for _ in range(10)]
 
-GazoPic.append(GazoPicture())
-GazoPic.append(GazoPicture())
-GazoPic[0].SetFolder(DEFOLDER)
-GazoPic[0].SetRandamXY(1500,1000)
-GazoPic[0].Drawing(e)
-GazoPic[1].SetFolder(DEFOLDER)
-GazoPic[1].Drawing(e)
+
+for GazoP in GazoPictureData:
+    GazoP.SetFolder(DEFOLDER)
+    GazoP.SetRandamXY(WIDTH,HEIGHT)
+
+
+gl = Gazoload()
+
+
+
+
+gl.load(GazoPictureData[gl.count],e)
 
 
 #子窓のラベル
