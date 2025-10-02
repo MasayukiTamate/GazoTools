@@ -27,7 +27,7 @@ def GetGazoFiles(folder, base_path):
     Files = []
     for f in folder:
         full_path = os.path.join(base_path, f)
-        if str(f).endswith(".jpg") or str(f).endswith(".png") or str(f).endswith(".webp"):
+        if str(f).endswith(".jpg") or str(f).endswith(".png") or str(f).endswith(".webp") or str(f).endswith(".bmp"):
             Files.append(f)
 
     return Files 

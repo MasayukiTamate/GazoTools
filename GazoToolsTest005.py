@@ -18,9 +18,10 @@ from tkinterdnd2 import *
 import random
 
 #DEFOLDER = "C:\\Windows"
-DEFOLDER = "C:\\"
+
 DEFOLDER = "K:\\格納-V\\新しいフォルダー"
 DEFOLDER = "C:\\最強に最高に最強\\"
+DEFOLDER = "C:\\"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -31,8 +32,6 @@ _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 class HakoData():
     def __init__(self):
         self.StartFolder = "c:"
-        self.GazoFiles = []
-        self.GazoDrawingFlag = []
         self.GazoDrawingNumFlag = []
         pass
     def GetGazoFiles(self, GazoFiles):
@@ -51,17 +50,37 @@ class HakoData():
 
 class GazoPicture():
     def __init__(self):
-
+        '''
+        画像の窓
+        '''
         self.StartFolder = "c:"
+        self.x = 0
+        self.y = 0
         pass
     def SetFolder(self, folder):
+        '''
+        画像のあるフォルダをセット
+        '''
         self.StartFolder = folder
-
+    def SetRandamXY(self,width,height):
+        '''
+        ランダムでxy座標をセット
+        '''
+        self.x = int(random.random() * width)
+        self.y = int(random.random() * height)
+        pass
     def Drawing(self, fileName):
         imageFolder = self.StartFolder
-#        print(f"{imageFolder=} {fileName=}")
-        fullName = imageFolder + "\\" + fileName
-        print(f"{fullName=}")
+
+        
+        conjunction = "\\"
+        if imageFolder.endswith("\\"):
+            conjunction = ""
+        fullName = imageFolder + conjunction + fileName
+
+        '''
+        ファイル名のフルパスの合成完了
+        '''
         img = Image.open(fullName)
         
         img = img.resize([int(img.width / 2 ),int(img.width / 2)])
@@ -70,11 +89,10 @@ class GazoPicture():
         height = tkimg.height()
 
         
-        Gazo = tk.Tk()
-        GAZOSIZEXY = tkConvertWinSize(list([width, height, 400 + 200, 20]))
+        Gazo = tk.Toplevel()
+        GAZOSIZEXY = tkConvertWinSize(list([width, height, self.x, self.y]))
         Gazo.geometry(GAZOSIZEXY)
         GazoCanvas = tk.Canvas(Gazo, width=width,height=height)
-        
         GazoCanvas.pack()
         GazoCanvas.image = tkimg
         GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
@@ -105,8 +123,13 @@ DADTEXT = "ドラッグアンドドロップしてください"
 TKWINSIZEANDXY = tkConvertWinSize(list([200, 100]))
 TKWINSIZEANDXY = tkConvertWinSize(list([200, 100, 200, 20]))
 
+WIDTH = 1200
+HEIGHT = 800
 #主窓
 root = tk.Tk()
+print(root.winfo_screenwidth())
+print(root.winfo_screenheight())
+
 root.geometry(TKWINSIZEANDXY)
 root.title("画像tools")
 #子窓
@@ -133,12 +156,20 @@ GazoPic = []
 
 #GazoWindows.append(tk.Tk())
 
-Gazo = GazoPicture()
-
-Gazo.SetFolder(DEFOLDER)
 
 
-   
+e = str(ZanGazoFiles[0][0])
+
+
+GazoPic.append(GazoPicture())
+GazoPic.append(GazoPicture())
+GazoPic[0].SetFolder(DEFOLDER)
+GazoPic[0].SetRandamXY(1500,1000)
+GazoPic[0].Drawing(e)
+GazoPic[1].SetFolder(DEFOLDER)
+GazoPic[1].Drawing(e)
+
+
 #子窓のラベル
 text = tk.StringVar(koRoot)
 DADTEXT = "ドラッグアンドドロップ\nしてください"
