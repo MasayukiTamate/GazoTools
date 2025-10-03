@@ -22,6 +22,7 @@ import random
 DEFOLDER = "K:\\格納-V\\新しいフォルダー"
 DEFOLDER = "C:\\最強に最高に最強\\"
 DEFOLDER = "C:\\"
+DEFOLDER = "C:\\Users\\manaby\\Pictures\\pp.6-6"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -108,6 +109,7 @@ def GazoRoad( gp, fileName):
     root.after(1000,GazoRoad)
     pass
 
+
 class Gazoload():
     def __init__(self):
         self.count = 0
@@ -164,11 +166,11 @@ koRoot.title(DADTEXT)
 ZanFolders = []
 
 ZanFolders.append(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
-#print(f"{ZanFolders=}")
+print(f"{ZanFolders=}")
 
 ZanGazoFiles = []
 ZanGazoFiles.append(GetGazoFiles(os.listdir(DEFOLDER),DEFOLDER))
-#print(f"{ZanGazoFiles=}")
+print(f"{ZanGazoFiles=}")
 
 #画像窓
 #スイッチで表示
@@ -180,22 +182,21 @@ GazoPic = []
 
 
 
-e = str(ZanGazoFiles[0][0])
+#至急！2次元配列を1次元配列に
+GazoDrawPictureData = [GazoPicture() for _ in range(len(ZanGazoFiles[0]))]
 
-GazoPictureData = [GazoPicture() for _ in range(10)]
-
-
-for GazoP in GazoPictureData:
+print(f"{ZanGazoFiles[0]=}")
+for Gazo, GazoP in zip(ZanGazoFiles[0], GazoDrawPictureData):
     GazoP.SetFolder(DEFOLDER)
     GazoP.SetRandamXY(WIDTH,HEIGHT)
+    print(f"{Gazo=}")
+    GazoP.Drawing(Gazo)
 
 
-gl = Gazoload()
 
 
 
 
-gl.load(GazoPictureData[gl.count],e)
 
 
 #子窓のラベル
