@@ -16,13 +16,14 @@ import tkinter as tk
 from PIL import ImageTk, Image
 from tkinterdnd2 import *
 import random
+import sys
 
 #DEFOLDER = "C:\\Windows"
 
 DEFOLDER = "K:\\格納-V\\新しいフォルダー"
-DEFOLDER = "C:\\最強に最高に最強\\"
 DEFOLDER = "C:\\"
 DEFOLDER = "C:\\Users\\manaby\\Pictures\\pp.6-6"
+DEFOLDER = "C:\\最強に最高に最強\\"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -34,6 +35,7 @@ class HakoData():
     def __init__(self):
         self.StartFolder = "c:"
         self.GazoDrawingNumFlag = []
+        self.count = 0
         pass
     def GetGazoFiles(self, GazoFiles):
         self.GazoFiles.append(GazoFiles)
@@ -72,7 +74,7 @@ class GazoPicture():
         pass
     def Drawing(self, fileName):
         imageFolder = self.StartFolder
-
+        print(f"{imageFolder=}, {fileName=}")
         
         conjunction = "\\"
         if imageFolder.endswith("\\"):
@@ -97,6 +99,7 @@ class GazoPicture():
         GazoCanvas.pack()
         GazoCanvas.image = tkimg
         GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
+        HakoData1.count += 1
         pass
 
 def drop(event):
@@ -125,7 +128,13 @@ class Gazoload():
         if self.count > 10:
             root.after(100, self.load)
         pass
+def key_Down(event):
 
+    if event.keycode == 32:
+        sys.exit()
+    if event.keycode == "escape":
+        sys.exit()
+        
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_//_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 
 メイン
@@ -155,11 +164,13 @@ print(root.winfo_screenwidth())
 print(root.winfo_screenheight())
 
 root.geometry(TKWINSIZEANDXY)
+root.overrideredirect(True)
 root.title("画像tools")
 #子窓
 koRoot = TkinterDnD.Tk()
 KOWINDSIZEXY = tkConvertWinSize(list([200, 100, 200+200, 20]))
 koRoot.geometry(KOWINDSIZEXY)
+koRoot.overrideredirect(True)
 koRoot.title(DADTEXT)
 
 
@@ -178,10 +189,6 @@ print(f"{ZanGazoFiles=}")
 GazoWindows = []
 GazoPic = []
 
-#GazoWindows.append(tk.Tk())
-
-
-
 #至急！2次元配列を1次元配列に
 GazoDrawPictureData = [GazoPicture() for _ in range(len(ZanGazoFiles[0]))]
 
@@ -189,14 +196,15 @@ print(f"{ZanGazoFiles[0]=}")
 for Gazo, GazoP in zip(ZanGazoFiles[0], GazoDrawPictureData):
     GazoP.SetFolder(DEFOLDER)
     GazoP.SetRandamXY(WIDTH,HEIGHT)
-    print(f"{Gazo=}")
-    GazoP.Drawing(Gazo)
+#    print(f"{Gazo=}")
+#    GazoP.Drawing(Gazo)
 
 
+HakoData1 = HakoData()
 
 
-
-
+ProgressButton = tk.Button(root, text="画像表示", command=lambda: GazoDrawPictureData[HakoData1.count].Drawing( ZanGazoFiles[0][HakoData1.count] ) )
+ProgressButton.grid(row=0, column=0, padx=2)
 
 
 #子窓のラベル
@@ -206,5 +214,6 @@ DADLabel = tk.Label(koRoot, text=text, bg="lightblue", font=("Helvetica", "10"))
 DADLabel.drop_target_register(DND_FILES)
 DADLabel.dnd_bind("<<Drop>>",drop)
 DADLabel.grid(row=0, column=0, padx=2)
+
 
 root.mainloop()
