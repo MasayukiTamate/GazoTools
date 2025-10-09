@@ -17,13 +17,13 @@ from PIL import ImageTk, Image
 from tkinterdnd2 import *
 import random
 import sys
-
+import tkinter.messagebox as msgbox
 #DEFOLDER = "C:\\Windows"
 
 DEFOLDER = "K:\\格納-V\\新しいフォルダー"
 DEFOLDER = "C:\\"
-DEFOLDER = "C:\\Users\\manaby\\Pictures\\pp.6-6"
 DEFOLDER = "C:\\最強に最高に最強\\"
+DEFOLDER = "C:\\Users\\manaby\\Pictures\\pp.6-6"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -36,6 +36,7 @@ class HakoData():
         self.StartFolder = "c:"
         self.GazoDrawingNumFlag = []
         self.count = 0
+        self.MaxCountPic = 0
         pass
     def GetGazoFiles(self, GazoFiles):
         self.GazoFiles.append(GazoFiles)
@@ -50,6 +51,11 @@ class HakoData():
             self.GazoDrawingFlag[number] = "1"
         
         return self.GazoFiles[number]
+    def setMaxCountPic(self, MaxCnt):
+        self.MaxCountPic = MaxCnt
+        pass
+
+
 
 class GazoPicture():
     def __init__(self):
@@ -73,6 +79,13 @@ class GazoPicture():
         self.y = int(random.random() * height)
         pass
     def Drawing(self, fileName):
+
+        if HakoData1.count >= HakoData1.MaxCountPic:
+            msgbox.showerror("終了処理","ファイルがないか、閲覧数が０です")
+            root.quit()
+
+            exit()           
+
         imageFolder = self.StartFolder
         print(f"{imageFolder=}, {fileName=}")
         
@@ -93,13 +106,26 @@ class GazoPicture():
 
         
         Gazo = tk.Toplevel()
+
+
+
+
         GAZOSIZEXY = tkConvertWinSize(list([width, height, self.x, self.y]))
         Gazo.geometry(GAZOSIZEXY)
+
+
+
+
         GazoCanvas = tk.Canvas(Gazo, width=width,height=height)
         GazoCanvas.pack()
         GazoCanvas.image = tkimg
         GazoCanvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
+
+
         HakoData1.count += 1
+        if HakoData1.count >= HakoData1.MaxCountPic:
+            msgbox.showerror("終了処理","終わります")
+            root.quit()
         pass
 
 def drop(event):
@@ -164,14 +190,23 @@ print(root.winfo_screenwidth())
 print(root.winfo_screenheight())
 
 root.geometry(TKWINSIZEANDXY)
-root.overrideredirect(True)
 root.title("画像tools")
 #子窓
 koRoot = TkinterDnD.Tk()
 KOWINDSIZEXY = tkConvertWinSize(list([200, 100, 200+200, 20]))
 koRoot.geometry(KOWINDSIZEXY)
-koRoot.overrideredirect(True)
 koRoot.title(DADTEXT)
+
+TboxRoot = tk.Toplevel()
+w = 200
+h = 100
+KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200, 20]))
+TboxRoot.geometry(KOWINDSIZEXY)
+TboxRoot.overrideredirect(True)
+TboxRoot.title(DADTEXT)
+textbox = tk.Text(TboxRoot, width=w, height=h)
+textbox.pack()
+
 
 
 ZanFolders = []
