@@ -124,7 +124,8 @@ class GazoPicture():
 
         HakoData1.count += 1
         if HakoData1.count >= HakoData1.MaxCountPic:
-            msgbox.showerror("終了処理","終わります")
+            if msgbox.askyesno(title="終了処理",message="終わりますか？"):
+                pass
             root.quit()
         pass
 
@@ -196,11 +197,11 @@ koRoot = TkinterDnD.Tk()
 KOWINDSIZEXY = tkConvertWinSize(list([200, 100, 200+200, 20]))
 koRoot.geometry(KOWINDSIZEXY)
 koRoot.title(DADTEXT)
-
+#文窓
 TboxRoot = tk.Toplevel()
 w = 200
 h = 100
-KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200, 20]))
+KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
 TboxRoot.geometry(KOWINDSIZEXY)
 TboxRoot.overrideredirect(True)
 TboxRoot.title(DADTEXT)
@@ -208,19 +209,45 @@ textbox = tk.Text(TboxRoot, width=w, height=h)
 textbox.pack()
 
 
+#文窓　表示関連
+TEXTBOXFONTSIZE = 12
 
 ZanFolders = []
-
 ZanFolders.append(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
 print(f"{ZanFolders=}")
+
+textbox.insert(tk.END, "フォルダ\n")
+if not ZanFolders[0]:
+    textbox.insert(tk.END, "なし\n")
+
+for ZanFol in ZanFolders:
+    textbox.insert(tk.END,ZanFol)
+    textbox.insert(tk.END,"\n")
+
+h = TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders)
+KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
+TboxRoot.geometry(KOWINDSIZEXY)
 
 ZanGazoFiles = []
 ZanGazoFiles.append(GetGazoFiles(os.listdir(DEFOLDER),DEFOLDER))
 print(f"{ZanGazoFiles=}")
 
-#画像窓
-#スイッチで表示
+textbox.insert(tk.END,"ファイル\n")
+for ZgF in ZanGazoFiles[0]:
+    textbox.insert(tk.END,ZgF)
+    textbox.insert(tk.END,"\n")
+#繰り返している
 
+h = h + TEXTBOXFONTSIZE * 1 + TEXTBOXFONTSIZE * len(ZanGazoFiles[0]) + TEXTBOXFONTSIZE * 2
+KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
+TboxRoot.geometry(KOWINDSIZEXY)
+#繰り返している
+
+textbox.insert(tk.END,"ファイル数\n" + str(len(ZanGazoFiles[0])) +"枚\n")
+
+
+#要枠
+#画像窓
 GazoWindows = []
 GazoPic = []
 
@@ -236,7 +263,7 @@ for Gazo, GazoP in zip(ZanGazoFiles[0], GazoDrawPictureData):
 
 
 HakoData1 = HakoData()
-
+HakoData1.setMaxCountPic(len(ZanGazoFiles[0]))
 
 ProgressButton = tk.Button(root, text="画像表示", command=lambda: GazoDrawPictureData[HakoData1.count].Drawing( ZanGazoFiles[0][HakoData1.count] ) )
 ProgressButton.grid(row=0, column=0, padx=2)
