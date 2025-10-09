@@ -271,6 +271,7 @@ ProgressButton.grid(row=0, column=0, padx=2)
 
 #子窓のラベル
 text = tk.StringVar(koRoot)
+text = DEFOLDER
 DADTEXT = "ドラッグアンドドロップ\nしてください"
 DADLabel = tk.Label(koRoot, text=text, bg="lightblue", font=("Helvetica", "10"))
 DADLabel.drop_target_register(DND_FILES)
