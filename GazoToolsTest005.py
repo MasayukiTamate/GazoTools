@@ -148,7 +148,29 @@ def key_Down(event):
 
 class FileTextdatProtocol():
     def __init__(self):
+        FoldersList = []
+        FilesList = []
+
         pass
+
+class WindowsPpositionManagement():
+    def __init__(self):
+        MainWin = XY()
+        SubWin = XY()
+        TextBoxWin = XY()
+        PicWin = []
+
+
+        pass
+
+class XY():
+    def __init__(self):        
+        self.x = 0
+        self.y = 0
+        self.Widht = 200
+        self.Height = 200
+        pass
+
 
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_//_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 
@@ -211,10 +233,13 @@ if not ZanFolders[0]:
 for ZanFol in ZanFolders:
     textbox.insert(tk.END,ZanFol)
     textbox.insert(tk.END,"\n")
+#繰り返している
+
 
 h = TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders)
 KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
 TboxRoot.geometry(KOWINDSIZEXY)
+#繰り返している
 
 ZanGazoFiles = []
 ZanGazoFiles.append(GetGazoFiles(os.listdir(DEFOLDER),DEFOLDER))
