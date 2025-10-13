@@ -159,8 +159,9 @@ class WindowsPpositionManagement():
         SubWin = XY()
         TextBoxWin = XY()
         PicWin = []
+        pass
 
-
+    def SetPosition():
         pass
 
 class XY():
