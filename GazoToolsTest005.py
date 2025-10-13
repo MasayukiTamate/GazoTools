@@ -139,29 +139,17 @@ def GazoRoad( gp, fileName):
     root.after(1000,GazoRoad)
     pass
 
-
-class Gazoload():
-    def __init__(self):
-        self.count = 0
-        pass
-
-    def load(self, gp, fileName):
-        '''
-        
-        '''
-        self.count = self.count + 1
-        gp.Drawing(fileName)
-
-        if self.count > 10:
-            root.after(100, self.load)
-        pass
 def key_Down(event):
 
     if event.keycode == 32:
         sys.exit()
     if event.keycode == "escape":
         sys.exit()
-        
+
+class FileTextdatProtocol():
+    def __init__(self):
+        pass
+
 '''_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_//_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 
 メイン
