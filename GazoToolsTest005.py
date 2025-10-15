@@ -146,7 +146,7 @@ def key_Down(event):
     if event.keycode == "escape":
         sys.exit()
 
-class FileTextdatProtocol():
+class FileTextdataProtocol():
     def __init__(self):
         FoldersList = []
         FilesList = []
@@ -223,11 +223,21 @@ textbox.pack()
 #文窓　表示関連
 TEXTBOXFONTSIZE = 12
 
+#現在のフォルダをTEXT変数に追加
+textbox.insert(tk.END,"現在の作業フォルダ\n")
+textbox.insert(tk.END,DEFOLDER.replace("\\","内の\n"))
+textbox.insert(tk.END,"\n\n")
+
+
+h = h + TEXTBOXFONTSIZE * 2 + TEXTBOXFONTSIZE * 0
+KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
+
+#子フォルダをテキストに追加
 ZanFolders = []
 ZanFolders.append(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
 print(f"{ZanFolders=}")
 
-textbox.insert(tk.END, "フォルダ\n")
+textbox.insert(tk.END, "子フォルダ\n")
 if not ZanFolders[0]:
     textbox.insert(tk.END, "なし\n")
 
@@ -237,7 +247,7 @@ for ZanFol in ZanFolders:
 #繰り返している
 
 
-h = TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders)
+h = h + TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders)
 KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
 TboxRoot.geometry(KOWINDSIZEXY)
 #繰り返している
@@ -258,7 +268,6 @@ TboxRoot.geometry(KOWINDSIZEXY)
 #繰り返している
 
 textbox.insert(tk.END,"ファイル数\n" + str(len(ZanGazoFiles[0])) +"枚\n")
-
 
 #要枠
 #画像窓
@@ -285,7 +294,7 @@ ProgressButton.grid(row=0, column=0, padx=2)
 
 #子窓のラベル
 text = tk.StringVar(koRoot)
-text = DEFOLDER
+text = DEFOLDER.replace("\\","内の\n")
 DADTEXT = "ドラッグアンドドロップ\nしてください"
 DADLabel = tk.Label(koRoot, text=text, bg="lightblue", font=("Helvetica", "10"))
 DADLabel.drop_target_register(DND_FILES)
