@@ -18,12 +18,13 @@ from tkinterdnd2 import *
 import random
 import sys
 import tkinter.messagebox as msgbox
-#DEFOLDER = "C:\\Windows"
 
-DEFOLDER = "K:\\格納-V\\新しいフォルダー"
+
+#DEFOLDER = "C:\\Windows"
 DEFOLDER = "C:\\"
 DEFOLDER = "C:\\最強に最高に最強\\"
 DEFOLDER = "C:\\Users\\manaby\\Pictures\\pp.6-6"
+DEFOLDER = "K:\\格納-V\\新しいフォルダー"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -65,6 +66,7 @@ class GazoPicture():
         self.StartFolder = "c:"
         self.x = 0
         self.y = 0
+        self.title = "なにもない"
         pass
     def SetFolder(self, folder):
         '''
@@ -98,21 +100,28 @@ class GazoPicture():
         ファイル名のフルパスの合成完了
         '''
         img = Image.open(fullName)
-        
-        img = img.resize([int(img.width / 2 ),int(img.width / 2)])
+        print(f"{img.width=} {img.height}")
+        img = img.resize([int(img.width / 3 ),int(img.height / 3)])
         tkimg = ImageTk.PhotoImage(img)
         width = tkimg.width()
         height = tkimg.height()
 
         
         Gazo = tk.Toplevel()
+        ratio = 0
+        if width > height:
+            ratio = width / height
+        
+        else:
+            ratio = height / width
 
-
+        self.title = str(width) + "×" + str(height) + " " + str(ratio)
+        print(f"{self.title=} {ratio=}")
 
 
         GAZOSIZEXY = tkConvertWinSize(list([width, height, self.x, self.y]))
         Gazo.geometry(GAZOSIZEXY)
-
+        Gazo.title = fullName + " " +self.title
 
 
 
@@ -127,6 +136,9 @@ class GazoPicture():
             if msgbox.askyesno(title="終了処理",message="終わりますか？"):
                 pass
             root.quit()
+        pass
+    def setTitle(self, title):
+        self.title = title
         pass
 
 def drop(event):
@@ -146,7 +158,7 @@ def key_Down(event):
     if event.keycode == "escape":
         sys.exit()
 
-class FileTextdataProtocol():
+class FileTextdatProtocol():
     def __init__(self):
         FoldersList = []
         FilesList = []
@@ -195,7 +207,7 @@ TKWINSIZEANDXY = tkConvertWinSize(list([200, 100]))
 TKWINSIZEANDXY = tkConvertWinSize(list([200, 100, 200, 20]))
 
 WIDTH = 1200
-HEIGHT = 800
+HEIGHT = 800.
 #主窓
 root = tk.Tk()
 print(root.winfo_screenwidth())
@@ -223,21 +235,11 @@ textbox.pack()
 #文窓　表示関連
 TEXTBOXFONTSIZE = 12
 
-#現在のフォルダをTEXT変数に追加
-textbox.insert(tk.END,"現在の作業フォルダ\n")
-textbox.insert(tk.END,DEFOLDER.replace("\\","内の\n"))
-textbox.insert(tk.END,"\n\n")
-
-
-h = h + TEXTBOXFONTSIZE * 2 + TEXTBOXFONTSIZE * 0
-KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
-
-#子フォルダをテキストに追加
 ZanFolders = []
 ZanFolders.append(GetKoFolder(os.listdir(DEFOLDER),DEFOLDER))
 print(f"{ZanFolders=}")
 
-textbox.insert(tk.END, "子フォルダ\n")
+textbox.insert(tk.END, "フォルダ\n")
 if not ZanFolders[0]:
     textbox.insert(tk.END, "なし\n")
 
@@ -247,7 +249,7 @@ for ZanFol in ZanFolders:
 #繰り返している
 
 
-h = h + TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders)
+h = TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders)
 KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
 TboxRoot.geometry(KOWINDSIZEXY)
 #繰り返している
@@ -268,6 +270,7 @@ TboxRoot.geometry(KOWINDSIZEXY)
 #繰り返している
 
 textbox.insert(tk.END,"ファイル数\n" + str(len(ZanGazoFiles[0])) +"枚\n")
+
 
 #要枠
 #画像窓
@@ -294,7 +297,7 @@ ProgressButton.grid(row=0, column=0, padx=2)
 
 #子窓のラベル
 text = tk.StringVar(koRoot)
-text = DEFOLDER.replace("\\","内の\n")
+text = DEFOLDER
 DADTEXT = "ドラッグアンドドロップ\nしてください"
 DADLabel = tk.Label(koRoot, text=text, bg="lightblue", font=("Helvetica", "10"))
 DADLabel.drop_target_register(DND_FILES)
