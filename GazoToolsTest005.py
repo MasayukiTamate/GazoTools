@@ -22,9 +22,10 @@ import tkinter.messagebox as msgbox
 
 #DEFOLDER = "C:\\Windows"
 DEFOLDER = "C:\\"
-DEFOLDER = "C:\\最強に最高に最強\\"
+
 DEFOLDER = "C:\\Users\\manaby\\Pictures\\pp.6-6"
 DEFOLDER = "K:\\格納-V\\新しいフォルダー"
+DEFOLDER = "C:\\最強に最高に最強\\"
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -38,6 +39,10 @@ class HakoData():
         self.GazoDrawingNumFlag = []
         self.count = 0
         self.MaxCountPic = 0
+        self.ListRandmPic = []
+        self.GazoFiles = []
+        self.GazoDrawingFlag = []
+        self.PicDrawFlag = False
         pass
     def GetGazoFiles(self, GazoFiles):
         self.GazoFiles.append(GazoFiles)
@@ -46,7 +51,8 @@ class HakoData():
             self.GazoDrawingFlag.append(0)
         pass
     def RandamGazoSet(self):
-        number = int(random.random(0,len(self.GazoFiles)))
+        number = int(random.uniform(0, len(self.GazoFiles)))
+        print(f"{number=}")
         if not number in self.GazoDrawingNumFlag:
             self.GazoDrawingNumFlag.append(number)
             self.GazoDrawingFlag[number] = "1"
@@ -67,6 +73,7 @@ class GazoPicture():
         self.x = 0
         self.y = 0
         self.title = "なにもない"
+        self.ModeShuffle = True
         pass
     def SetFolder(self, folder):
         '''
@@ -94,6 +101,9 @@ class GazoPicture():
         conjunction = "\\"
         if imageFolder.endswith("\\"):
             conjunction = ""
+
+        if self.ModeShuffle:
+            fileName = HakoData1.RandamGazoSet()
         fullName = imageFolder + conjunction + fileName
 
         '''
@@ -101,7 +111,7 @@ class GazoPicture():
         '''
         img = Image.open(fullName)
         print(f"{img.width=} {img.height}")
-        img = img.resize([int(img.width / 3 ),int(img.height / 3)])
+        img = img.resize([int(img.width / 4 ),int(img.height / 4)])
         tkimg = ImageTk.PhotoImage(img)
         width = tkimg.width()
         height = tkimg.height()
@@ -136,6 +146,10 @@ class GazoPicture():
             if msgbox.askyesno(title="終了処理",message="終わりますか？"):
                 pass
             root.quit()
+
+
+        HakoData1.PicDrawFlag = True
+        
         pass
     def setTitle(self, title):
         self.title = title
@@ -204,10 +218,10 @@ _/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 '''
 DADTEXT = "ドラッグアンドドロップしてください"
 TKWINSIZEANDXY = tkConvertWinSize(list([200, 100]))
-TKWINSIZEANDXY = tkConvertWinSize(list([200, 100, 200, 20]))
+TKWINSIZEANDXY = tkConvertWinSize(list([200, 100, 1000, 20]))
 
-WIDTH = 1200
-HEIGHT = 800.
+WIDTH = 2400
+HEIGHT = 600.
 #主窓
 root = tk.Tk()
 print(root.winfo_screenwidth())
@@ -269,8 +283,11 @@ KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
 TboxRoot.geometry(KOWINDSIZEXY)
 #繰り返している
 
+
 textbox.insert(tk.END,"ファイル数\n" + str(len(ZanGazoFiles[0])) +"枚\n")
 
+HakoData1 = HakoData()
+HakoData1.setMaxCountPic(len(ZanGazoFiles[0]))
 
 #要枠
 #画像窓
@@ -284,14 +301,13 @@ print(f"{ZanGazoFiles[0]=}")
 for Gazo, GazoP in zip(ZanGazoFiles[0], GazoDrawPictureData):
     GazoP.SetFolder(DEFOLDER)
     GazoP.SetRandamXY(WIDTH,HEIGHT)
-#    print(f"{Gazo=}")
-#    GazoP.Drawing(Gazo)
 
+for gz in ZanGazoFiles[0]:
+    HakoData1.GetGazoFiles(gz)
 
-HakoData1 = HakoData()
-HakoData1.setMaxCountPic(len(ZanGazoFiles[0]))
+PicName = HakoData1.RandamGazoSet()
 
-ProgressButton = tk.Button(root, text="画像表示", command=lambda: GazoDrawPictureData[HakoData1.count].Drawing( ZanGazoFiles[0][HakoData1.count] ) )
+ProgressButton = tk.Button(root, text="画像表示", command=lambda: GazoDrawPictureData[HakoData1.count].Drawing( PicName ) )
 ProgressButton.grid(row=0, column=0, padx=2)
 
 
@@ -303,6 +319,7 @@ DADLabel = tk.Label(koRoot, text=text, bg="lightblue", font=("Helvetica", "10"))
 DADLabel.drop_target_register(DND_FILES)
 DADLabel.dnd_bind("<<Drop>>",drop)
 DADLabel.grid(row=0, column=0, padx=2)
+
 
 
 root.mainloop()
