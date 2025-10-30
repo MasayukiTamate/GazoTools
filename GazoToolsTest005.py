@@ -262,20 +262,20 @@ textbox.insert(tk.END, "フォルダ\n")
 if not ZanFolders[0]:
     textbox.insert(tk.END, "なし\n")
 
-for ZanFol in ZanFolders:
+for ZanFol in ZanFolders[0]:
     textbox.insert(tk.END,ZanFol)
     textbox.insert(tk.END,"\n")
 #繰り返している
 
 
-h = TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders)
+h = TEXTBOXFONTSIZE * 3 + TEXTBOXFONTSIZE * len(ZanFolders[0]) + 2
 KOWINDSIZEXY = tkConvertWinSize(list([w, h, 200+200+200+10, 20]))
 TboxRoot.geometry(KOWINDSIZEXY)
 #繰り返している
 
 ZanGazoFiles = []
 ZanGazoFiles.append(GetGazoFiles(os.listdir(DEFOLDER),DEFOLDER))
-print(f"{ZanGazoFiles=}")
+#print(f"{ZanGazoFiles=}")
 
 textbox.insert(tk.END,"ファイル\n")
 for ZgF in ZanGazoFiles[0]:
