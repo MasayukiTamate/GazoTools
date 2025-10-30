@@ -21,11 +21,13 @@ import tkinter.messagebox as msgbox
 
 
 #DEFOLDER = "C:\\Windows"
-DEFOLDER = "C:\\"
+
 
 DEFOLDER = "C:\\Users\\manaby\\Pictures\\pp.6-6"
 DEFOLDER = "K:\\格納-V\\新しいフォルダー"
 DEFOLDER = "C:\\最強に最高に最強\\"
+DEFOLDER = "C:\\"
+
 '''/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 クラス　メインデータ
 
@@ -55,7 +57,10 @@ class HakoData():
         print(f"{number=}")
         if not number in self.GazoDrawingNumFlag:
             self.GazoDrawingNumFlag.append(number)
-            self.GazoDrawingFlag[number] = "1"
+            if self.GazoDrawingFlag:
+                self.GazoDrawingFlag[number] = "1"
+            else:
+                self.GazoFiles.append(False)
         
         return self.GazoFiles[number]
     def setMaxCountPic(self, MaxCnt):
