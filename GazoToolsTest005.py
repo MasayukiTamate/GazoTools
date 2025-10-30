@@ -45,6 +45,12 @@ class HakoData():
         self.GazoFiles = []
         self.GazoDrawingFlag = []
         self.PicDrawFlag = False
+        self.count_Folder = 0
+        self.selectFolders = []
+        pass
+    def setFolders(self, folders):
+        for folder in folders:
+            self.selectFolders.append(folder)
         pass
     def GetGazoFiles(self, GazoFiles):
         self.GazoFiles.append(GazoFiles)
@@ -176,7 +182,15 @@ def key_Down(event):
         sys.exit()
     if event.keycode == "escape":
         sys.exit()
-
+def folder_up():
+    pass
+def folder_next():
+    HakoData1.StartFolder = HakoData1.selectFolders[HakoData1.count_Folder]
+    HakoData1.count_Folder = HakoData1.count_Folder + 1
+    print(f"{HakoData1.StartFolder=}")
+    textbox.delete(1.0,tk.END)
+    textbox.insert(tk.END, HakoData1.StartFolder)
+    pass
 class FileTextdatProtocol():
     def __init__(self):
         FoldersList = []
@@ -251,6 +265,10 @@ textbox = tk.Text(TboxRoot, width=w, height=h)
 textbox.pack()
 
 
+HakoData1 = HakoData()
+DEFOLDER = HakoData1.StartFolder
+
+
 #文窓　表示関連
 TEXTBOXFONTSIZE = 12
 
@@ -290,10 +308,10 @@ TboxRoot.geometry(KOWINDSIZEXY)
 
 
 textbox.insert(tk.END,"ファイル数\n" + str(len(ZanGazoFiles[0])) +"枚\n")
+textbox.insert(tk.END,DEFOLDER)
 
-HakoData1 = HakoData()
 HakoData1.setMaxCountPic(len(ZanGazoFiles[0]))
-
+HakoData1.setFolders(ZanFolders[0])
 #要枠
 #画像窓
 GazoWindows = []
@@ -324,7 +342,9 @@ DADLabel = tk.Label(koRoot, text=text, bg="lightblue", font=("Helvetica", "10"))
 DADLabel.drop_target_register(DND_FILES)
 DADLabel.dnd_bind("<<Drop>>",drop)
 DADLabel.grid(row=0, column=0, padx=2)
-
-
+button = tk.Button(root, text="上", command=folder_up)
+button.grid(row=1, column=0, padx=2)
+button = tk.Button(root, text="次", command=folder_next)
+button.grid(row=1, column=1, padx=2)
 
 root.mainloop()
