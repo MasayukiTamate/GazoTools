@@ -22,12 +22,16 @@ def GetKoFolder(files, base_path):
 
 def GetGazoFiles(folder, base_path):
     '''
-    
+    フォルダ内のファイルリストから画像ファイルのみを抽出して返す。
+    大文字・小文字を区別せず、主要な画像形式を網羅します。
     '''
     Files = []
+    # 判定対象の拡張子（小文字で定義）
+    valid_extensions = ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif')
+    
     for f in folder:
-        full_path = os.path.join(base_path, f)
-        if str(f).endswith(".jpg") or str(f).endswith(".png") or str(f).endswith(".webp"):
+        # 小文字に変換して拡張子チェック
+        if str(f).lower().endswith(valid_extensions):
             Files.append(f)
 
-    return Files 
+    return Files

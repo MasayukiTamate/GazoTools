@@ -1,0 +1,32 @@
+{
+    "last_folder": "K:/格納-V\\最強に最高",
+    "geometries": {
+        "main": "874x262+124+735",
+        "folder": "220x120+11+0",
+        "file": "600x800+241+0"
+    },
+    "settings": {
+        "random_pos": true,
+        "topmost": 1,
+        "show_folder": true,
+        "show_file": true,
+        "ss_mode": false,
+        "ss_interval": 3,
+        "move_dest_list": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+        ],
+        "move_reg_idx": 0,
+        "move_dest_count": 2
+    }
+}
