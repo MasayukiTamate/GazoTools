@@ -111,15 +111,12 @@ class HakoData():
         self.GazoFiles = []
         self.GazoDrawingFlag = []
         self.GazoDrawingNumFlag = []
-
-    def SetGazoFiles(self, GazoFiles, folder_path):
-        """
-        画像ファイルリストを設定し、管理フラグを初期化します。
-        """
-        self.StartFolder = folder_path
-        self.GazoFiles = GazoFiles
-        self.GazoDrawingFlag = [0] * len(GazoFiles)
-        self.GazoDrawingNumFlag = []
+        pass
+    def GetGazoFiles(self, GazoFiles):
+        self.GazoFiles.append(GazoFiles)
+        
+        for _ in range(len(GazoFiles)):
+            self.GazoDrawingFlag.append(0)
         pass
 
     def RandamGazoSet(self):
@@ -142,6 +139,9 @@ class GazoPicture():
         self.open_windows = {} # 現在開いている画像ウィンドウを管理 {フルパス: ウィンドウオブジェクト}
 
     def SetFolder(self, folder):
+        '''
+        画像のあるフォルダをセット
+        '''
         self.StartFolder = folder
         self.CloseAll() # フォルダ変更時に一度全ての画像を閉じる
 
