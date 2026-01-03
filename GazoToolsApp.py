@@ -21,7 +21,7 @@ setup_logging(debug_mode=False)  # False=本番モード, True=デバッグモ�
 logger = get_logger(__name__)
 
 # ロジックモジュールのインポート
-from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor
+from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor, save_ratings, save_tags
 from lib.GazoToolsBasicLib import tkConvertWinSize
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
 from lib.GazoToolsState import get_app_state
@@ -481,6 +481,9 @@ def on_closing_main():
         app_state.set_topmost(koRoot.attributes("-topmost"))
         app_state.set_show_folder_window(show_folder_win.get())
         app_state.set_show_file_window(show_file_win.get())
+        app_state.show_rating_window = show_rating_win.get()
+        app_state.show_info_window = show_info_win.get()
+        app_state.vector_display["enabled"] = show_vector_win.get()
         app_state.set_ss_mode(ss_mode.get())
         app_state.set_ss_interval(ss_interval.get())
         app_state.set_ss_ai_mode(ss_ai_mode.get())
@@ -490,8 +493,18 @@ def on_closing_main():
         # AppState を設定ファイルに保存
         config_to_save = app_state.to_dict()
         save_config(config_to_save["last_folder"], config_to_save["geometries"], config_to_save["settings"])
-        
-        logger.info("アプリケーション終了: 設定を保存しました")
+
+        # 評価データを保存
+        save_ratings(GazoControl.rating_dict)
+        # 画像-評価マッピングを保存（タグデータに追加）
+        for image_hash, rating_name in GazoControl.image_rating_map.items():
+            if image_hash in GazoControl.tag_dict:
+                GazoControl.tag_dict[image_hash]["assigned_rating"] = rating_name
+            else:
+                GazoControl.tag_dict[image_hash] = {"tag": "", "hint": "", "rating": None, "assigned_rating": rating_name}
+        save_tags(GazoControl.tag_dict)
+
+        logger.info("アプリケーション終了: 設定と評価データを保存しました")
     except Exception as e:
         logger.error(f"終了処理エラー: {e}", exc_info=True)
     
@@ -576,11 +589,15 @@ def open_vector_settings():
     win.attributes("-topmost", True)
     cfg = app_state.vector_display.copy() if hasattr(app_state, 'vector_display') else {}
 
+    # 有効/無効のチェックボックスを最初に追加（メインメニューの設定を反映）
+    enabled_var = tk.BooleanVar(value=show_vector_win.get())
+    tk.Checkbutton(win, text="ベクトル表示を有効にする", variable=enabled_var).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=6)
+
     # モード選択
-    tk.Label(win, text="解釈モード:").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+    tk.Label(win, text="解釈モード:").grid(row=1, column=0, sticky="w", padx=6, pady=6)
     mode_var = tk.StringVar(value=cfg.get("interpretation_mode", "labels"))
     mode_menu = tk.OptionMenu(win, mode_var, "labels", "shap", "custom")
-    mode_menu.grid(row=0, column=1, sticky="w", padx=6, pady=6)
+    mode_menu.grid(row=1, column=1, sticky="w", padx=6, pady=6)
 
     # カテゴリ表示チェック
     color_var = tk.BooleanVar(value=cfg.get("show_color_features", True))
@@ -606,7 +623,7 @@ def open_vector_settings():
 
     def on_ok():
         new_cfg = {
-            "enabled": True,
+            "enabled": enabled_var.get(),
             "interpretation_mode": mode_var.get(),
             "show_color_features": color_var.get(),
             "show_edge_features": edge_var.get(),
@@ -623,6 +640,8 @@ def open_vector_settings():
         cfg_all_settings = cfg_all.get("settings", {})
         cfg_all_settings["vector_display"] = app_state.vector_display
         save_config(cfg_all["last_folder"], cfg_all.get("geometries", {}), cfg_all_settings)
+        # メインメニューのチェックボックスも更新
+        show_vector_win.set(enabled_var.get())
         # 更新完了
         win.destroy()
 
@@ -656,6 +675,9 @@ file_menu.add_command(label="終了(X)", command=on_closing_main)
 
 show_folder_win = tk.BooleanVar(value=app_state.show_folder_window)
 show_file_win = tk.BooleanVar(value=app_state.show_file_window)
+show_rating_win = tk.BooleanVar(value=app_state.show_rating_window)
+show_info_win = tk.BooleanVar(value=app_state.show_info_window)
+show_vector_win = tk.BooleanVar(value=app_state.vector_display.get("enabled", True))
 
 def update_visibility():
     if show_folder_win.get(): 
@@ -697,6 +719,103 @@ def on_random_size_change(*args):
 
 GazoControl.random_size.trace_add("write", on_random_size_change)
 config_menu.add_checkbutton(label="表示サイズをランダムにする", variable=GazoControl.random_size)
+
+config_menu.add_separator()
+
+# 評価ウィンドウ表示設定の変更をキャッチする関数
+def on_show_rating_change(*args):
+    app_state.show_rating_window = show_rating_win.get()
+    if app_state.show_rating_window and hasattr(GazoControl, '_current_image_hash') and GazoControl._current_image_hash:
+        GazoControl.update_rating_window(GazoControl._current_image_hash)
+    elif hasattr(GazoControl, '_rating_window') and GazoControl._rating_window:
+        GazoControl._rating_window.withdraw()
+    # 画像ウィンドウのサイズも調整
+    update_open_windows_size()
+
+show_rating_win.trace_add("write", on_show_rating_change)
+config_menu.add_checkbutton(label="評価ウィンドウを表示", variable=show_rating_win)
+
+# 情報ウィンドウ表示設定の変更をキャッチする関数
+def on_show_info_change(*args):
+    app_state.show_info_window = show_info_win.get()
+    if app_state.show_info_window and hasattr(GazoControl, '_current_image_hash') and GazoControl._current_image_hash:
+        # 現在の画像情報を取得して更新
+        if hasattr(GazoControl, 'tag_dict') and GazoControl._current_image_hash in GazoControl.tag_dict:
+            # 画像パスを取得（保存されている場合は使用）
+            image_path = getattr(GazoControl, '_current_image_path', '')
+            if not image_path:
+                # パスがわからない場合は更新しない
+                return
+            # サイズ情報なども必要だが、簡易的に更新
+            GazoControl.update_info_window(image_path, GazoControl._current_image_hash)
+    elif hasattr(GazoControl, '_info_window') and GazoControl._info_window:
+        GazoControl._info_window.withdraw()
+
+show_info_win.trace_add("write", on_show_info_change)
+config_menu.add_checkbutton(label="情報ウィンドウを表示", variable=show_info_win)
+
+# ベクトル表示設定の変更をキャッチする関数
+def on_show_vector_change(*args):
+    app_state.vector_display["enabled"] = show_vector_win.get()
+    # 現在表示中の画像ウィンドウのサイズを調整
+    update_open_windows_size()
+
+# 開いているウィンドウのサイズを再調整する関数
+def update_open_windows_size():
+    """設定変更時に開いている画像ウィンドウのサイズとUI要素を再調整"""
+    if hasattr(GazoControl, 'open_windows') and GazoControl.open_windows:
+        for win in list(GazoControl.open_windows.values()):
+            try:
+                if hasattr(win, '_image_hash') and win._image_hash:
+                    # UI要素の表示/非表示を更新
+                    for child in win.winfo_children():
+                        if isinstance(child, tk.Frame):
+                            for subchild in child.winfo_children():
+                                if isinstance(subchild, tk.Label) and hasattr(subchild, 'cget'):
+                                    # ベクトル表示ラベルを探す
+                                    try:
+                                        current_text = subchild.cget('text')
+                                        if current_text and (current_text.startswith('(') or '解釈' in current_text or 'エラー' in current_text):
+                                            # ベクトル表示ラベルの場合
+                                            if app_state.vector_display.get("enabled", True):
+                                                if not subchild.winfo_ismapped():
+                                                    subchild.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(4,6))
+                                            else:
+                                                if subchild.winfo_ismapped():
+                                                    subchild.pack_forget()
+                                    except:
+                                        pass
+
+                                # 評価UIは画像ウィンドウ内には表示しないため、処理しない
+
+                    # ウィンドウのサイズを再計算
+                    width = win.winfo_width()
+
+                    # 画像キャンバスの高さを取得
+                    image_height = 0
+                    for child in win.winfo_children():
+                        if isinstance(child, tk.Frame):
+                            for subchild in child.winfo_children():
+                                if isinstance(subchild, tk.Canvas):
+                                    image_height = subchild.winfo_height()
+                                    break
+                            break
+
+                    if image_height > 0:
+                        # UI要素の高さを再計算（評価UIは画像ウィンドウ内には表示しない）
+                        text_area_h = 0
+                        if app_state.vector_display.get("enabled", True):
+                            text_area_h += 40
+                        # 評価UIの高さは加算しない
+
+                        # 新しいウィンドウ高さを設定
+                        new_height = image_height + text_area_h
+                        win.geometry(f"{width}x{new_height}")
+            except Exception as e:
+                logger.error(f"ウィンドウサイズ更新エラー: {e}")
+
+show_vector_win.trace_add("write", on_show_vector_change)
+config_menu.add_checkbutton(label="ベクトル表示を有効にする", variable=show_vector_win)
 
 config_menu.add_separator()
 config_menu.add_checkbutton(label="スクリーンセーバー(自動再生)", variable=ss_mode, command=toggle_ss)
@@ -993,6 +1112,30 @@ def on_ctrl_t(event):
     GazoControl.TileWindows()
     print("[HOTKEY] Ctrl+T: 画像をタイル表示にしました")
 
+def on_ctrl_i(event):
+    """Ctrl + I で情報ウィンドウの表示/非表示を切り替えるのじゃ。のじゃ。"""
+    if hasattr(GazoControl, '_info_window') and GazoControl._info_window:
+        try:
+            if GazoControl._info_window.winfo_viewable():
+                GazoControl._info_window.withdraw()
+                print("[HOTKEY] Ctrl+I: 情報ウィンドウを非表示にしました")
+            else:
+                GazoControl._info_window.deiconify()
+                print("[HOTKEY] Ctrl+I: 情報ウィンドウを表示しました")
+        except:
+            # ウィンドウが存在しない場合は新しく作成
+            GazoControl.create_info_window()
+            print("[HOTKEY] Ctrl+I: 情報ウィンドウを作成しました")
+    else:
+        # ウィンドウが存在しない場合は新しく作成
+        GazoControl.create_info_window()
+        print("[HOTKEY] Ctrl+I: 情報ウィンドウを作成しました")
+
+def on_ctrl_r(event):
+    """Ctrl + R で全ての画像ウィンドウを閉じるのじゃ。のじゃ。"""
+    GazoControl.CloseAll()
+    print("[HOTKEY] Ctrl+R: 全ての画像ウィンドウを閉じました")
+
 def on_space(event):
     GazoControl.Drawing(data_manager.RandamGazoSet())
 
@@ -1002,6 +1145,7 @@ koRoot.bind_all("<Control-f>", on_ctrl_f)
 koRoot.bind_all("<Control-r>", on_ctrl_r)
 koRoot.bind_all("<Control-e>", on_ctrl_e)
 koRoot.bind_all("<Control-t>", on_ctrl_t)
+koRoot.bind_all("<Control-i>", on_ctrl_i)
 
 if ss_mode.get():
     koRoot.after(1000, auto_slideshow)

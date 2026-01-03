@@ -41,6 +41,8 @@ class AppState:
         # UI 表示設定
         self.show_folder_window = True
         self.show_file_window = True
+        self.show_rating_window = True     # 評価ウィンドウ表示
+        self.show_info_window = False      # 情報ウィンドウ表示
         self.random_pos = False
         self.random_size = False
         self.topmost = True
@@ -85,7 +87,10 @@ class AppState:
         self.image_min_height = DEFAULT_IMAGE_MIN_HEIGHT
         self.image_max_width = DEFAULT_IMAGE_MAX_WIDTH
         self.image_max_height = DEFAULT_IMAGE_MAX_HEIGHT
-        
+
+        # 画像評価データ（タグデータから同期）
+        self.image_ratings = {}
+
         # UI更新コールバック
         self._ui_callbacks = []
         
@@ -383,6 +388,8 @@ class AppState:
                 "topmost": self.topmost,
                 "show_folder": self.show_folder_window,
                 "show_file": self.show_file_window,
+                "show_rating_window": self.show_rating_window,
+                "show_info_window": self.show_info_window,
                 "ss_mode": self.ss_mode,
                 "ss_interval": self.ss_interval,
                 "ss_ai_mode": self.ss_ai_mode,
@@ -421,6 +428,8 @@ class AppState:
                 self.topmost = settings.get("topmost", True)
                 self.show_folder_window = settings.get("show_folder", True)
                 self.show_file_window = settings.get("show_file", True)
+                self.show_rating_window = settings.get("show_rating_window", True)
+                self.show_info_window = settings.get("show_info_window", False)
                 self.ss_mode = settings.get("ss_mode", False)
                 self.ss_interval = settings.get("ss_interval", 5)
                 self.ss_ai_mode = settings.get("ss_ai_mode", False)

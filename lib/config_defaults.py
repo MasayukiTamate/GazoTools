@@ -127,6 +127,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 TAG_CSV_FILE = os.path.join(DATA_DIR, "tagdata.csv")
 VECTOR_DATA_FILE = os.path.join(DATA_DIR, "vectordata.json")
+RATING_DATA_FILE = os.path.join(DATA_DIR, "ratings.json")
 CONFIG_FILE = "config.json"
 LOG_DIR = "logs"
 
@@ -152,6 +153,8 @@ def get_default_config():
             "topmost": True,
             "show_folder": True,
             "show_file": True,
+            "show_rating_window": True,          # 評価ウィンドウ表示
+            "show_info_window": False,           # 情報ウィンドウ表示（デフォルトOFF）
             "ss_mode": False,
             "ss_interval": DEFAULT_SS_INTERVAL,
             "ss_ai_mode": False,

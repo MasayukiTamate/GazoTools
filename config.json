@@ -1,21 +1,21 @@
 {
     "last_folder": "K:/最強に最高に最強",
     "geometries": {
-        "main": "511x370+230+456",
+        "main": "511x370+60+518",
         "folder": "310x430+11+0",
         "file": "600x800+331+0"
     },
     "settings": {
         "random_pos": true,
-        "random_size": false,
         "topmost": 1,
-        "show_folder": true,
-        "show_file": true,
+        "show_folder": false,
+        "show_file": false,
+        "show_rating_window": true,
+        "show_info_window": true,
         "ss_mode": false,
         "ss_interval": 5,
         "ss_ai_mode": true,
         "ss_ai_threshold": 0.65,
-        "ss_include_subfolders": true,
         "move_dest_list": [
             "",
             "",
@@ -34,12 +34,14 @@
         "move_dest_count": 2,
         "cpu_low_color": "#e0ffe0",
         "cpu_high_color": "#ff8080",
+        "random_size": true,
+        "ss_include_subfolders": true,
         "image_min_width": 100,
         "image_min_height": 100,
         "image_max_width": 0,
         "image_max_height": 0,
         "vector_display": {
-            "enabled": true,
+            "enabled": false,
             "interpretation_mode": "labels",
             "show_color_features": false,
             "show_edge_features": true,

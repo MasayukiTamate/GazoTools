@@ -23,7 +23,7 @@ from lib.GazoToolsExceptions import (
 from lib.GazoToolsLogger import LoggerManager
 from lib.config_defaults import (
     get_default_config, MOVE_DESTINATION_SLOTS,
-    TAG_CSV_FILE, VECTOR_DATA_FILE, CONFIG_FILE
+    TAG_CSV_FILE, VECTOR_DATA_FILE, RATING_DATA_FILE, CONFIG_FILE
 )
 from lib.GazoToolsState import get_app_state
 
@@ -115,8 +115,8 @@ def calculate_file_hash(filepath):
         raise FileHashError(f"Unexpected error calculating hash: {e}") from e
 
 def load_tags():
-    """タグデータを読み込むのじゃ。のじゃ。"""
-    tags = {} # key: hash, value: {tag: "...", hint: "..."}
+    """タグデータと評価データを読み込むのじゃ。のじゃ。"""
+    tags = {} # key: hash, value: {tag: "...", hint: "...", rating: int or None}
     if os.path.exists(TAG_CSV_FILE):
         try:
             with open(TAG_CSV_FILE, "r", encoding="utf-8") as f:
@@ -126,8 +126,9 @@ def load_tags():
                         h = row[0]
                         t = row[1]
                         hint = row[2] if len(row) > 2 else ""
-                        tags[h] = {"tag": t, "hint": hint}
-            logger.info(f"タグデータを読み込みました: {len(tags)}件")
+                        rating = int(row[3]) if len(row) > 3 and row[3] else None
+                        tags[h] = {"tag": t, "hint": hint, "rating": rating}
+            logger.info(f"タグ・評価データを読み込みました: {len(tags)}件")
         except IOError as e:
             logger.error(f"タグファイル読み込みエラー: {TAG_CSV_FILE}", exc_info=True)
             raise TagManagementError(f"Cannot read tag file: {e}") from e
@@ -140,17 +141,44 @@ def load_tags():
     return tags
 
 def save_tags(tags):
-    """タグデータを保存するのじゃ。のじゃ。"""
+    """タグデータと評価データを保存するのじゃ。のじゃ。"""
     try:
         os.makedirs(os.path.dirname(TAG_CSV_FILE), exist_ok=True)
         with open(TAG_CSV_FILE, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             for h, data in tags.items():
-                writer.writerow([h, data["tag"], data["hint"]])
-        logger.info(f"タグデータを保存しました: {len(tags)}件")
+                rating = data.get("rating", "")
+                writer.writerow([h, data["tag"], data["hint"], rating])
+        logger.info(f"タグ・評価データを保存しました: {len(tags)}件")
     except IOError as e:
         logger.error(f"タグファイル書き込みエラー: {TAG_CSV_FILE}", exc_info=True)
         raise TagManagementError(f"Cannot write tag file: {e}") from e
+
+
+def load_ratings():
+    """評価データを読み込むのじゃ。のじゃ。"""
+    ratings = {}  # key: rating_id, value: {name: "...", rating: int, color: "..."}
+    if os.path.exists(RATING_DATA_FILE):
+        try:
+            with open(RATING_DATA_FILE, "r", encoding="utf-8") as f:
+                ratings = json.load(f)
+            logger.info(f"評価データを読み込みました: {len(ratings)}件")
+        except (IOError, json.JSONDecodeError) as e:
+            logger.error(f"評価データファイル読み込みエラー: {RATING_DATA_FILE}", exc_info=True)
+            raise FileOperationError(f"Cannot read rating file: {e}") from e
+    return ratings
+
+
+def save_ratings(ratings):
+    """評価データを保存するのじゃ。のじゃ。"""
+    try:
+        os.makedirs(os.path.dirname(RATING_DATA_FILE), exist_ok=True)
+        with open(RATING_DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(ratings, f, ensure_ascii=False, indent=2)
+        logger.info(f"評価データを保存しました: {len(ratings)}件")
+    except IOError as e:
+        logger.error(f"評価データファイル書き込みエラー: {RATING_DATA_FILE}", exc_info=True)
+        raise FileOperationError(f"Cannot write rating file: {e}") from e
     except Exception as e:
         logger.error(f"タグ保存中に予期しないエラー: {e}", exc_info=True)
         raise TagManagementError(f"Unexpected error saving tags: {e}") from e
@@ -453,6 +481,14 @@ class HakoData():
 
 class GazoPicture():
     """画像表示制御クラスなのじゃ。のじゃ。"""
+
+    # 評価ウィンドウ（独立した子ウィンドウ）
+    _rating_window = None
+    _current_image_hash = None
+
+    # 情報ウィンドウ（独立した子ウィンドウ）
+    _info_window = None
+
     def __init__(self, parent, def_folder):
         self.parent = parent
         self.StartFolder = def_folder
@@ -462,6 +498,475 @@ class GazoPicture():
         self.folder_win = None
         self.file_win = None
         self.tag_dict = load_tags()
+        self.rating_dict = load_ratings()  # 評価データ（名前付き評価）
+        self.image_rating_map = {}  # 画像ハッシュ -> 評価ID のマッピング
+
+        # 既存のタグデータから評価マッピングを復元
+        for image_hash, data in self.tag_dict.items():
+            if "assigned_rating" in data and data["assigned_rating"]:
+                self.image_rating_map[image_hash] = data["assigned_rating"]
+
+    def create_rating_window(self):
+        """独立した子ウィンドウとして評価ウィンドウを作成（評価選択機能付き）"""
+        if GazoPicture._rating_window is not None:
+            try:
+                if GazoPicture._rating_window.winfo_exists():
+                    return GazoPicture._rating_window
+            except:
+                pass
+
+        try:
+            # メインウィンドウの子として評価ウィンドウを作成
+            rating_win = tk.Toplevel(self.parent)
+            rating_win.title("評価")
+            rating_win.attributes("-topmost", True)
+            rating_win.overrideredirect(True)  # タイトルバーなし
+            rating_win.attributes("-alpha", 0.9)  # 半透明
+
+            # ディスプレイ中央の最下部に配置（サイズを大きくする）
+            screen_w = rating_win.winfo_screenwidth()
+            screen_h = rating_win.winfo_screenheight()
+            win_width = 300
+            win_height = 120
+            x = (screen_w - win_width) // 2
+            y = screen_h - win_height - 10  # 最下部から10px上
+            rating_win.geometry(f"{win_width}x{win_height}+{x}+{y}")
+
+            # 背景フレーム
+            frame = tk.Frame(rating_win, bg="#2c3e50", bd=2, relief="raised")
+            frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # 評価選択ドロップダウン
+            rating_frame = tk.Frame(frame, bg="#34495e")
+            rating_frame.pack(fill=tk.X, pady=(5, 2))
+
+            tk.Label(rating_frame, text="評価:", font=("Arial", 9),
+                    fg="#ecf0f1", bg="#34495e").pack(side=tk.LEFT, padx=(5, 2))
+
+            # 評価リストを作成（デフォルト評価 + 名前付き評価）
+            rating_options = ["未選択"] + [name for name in self.rating_dict.keys()]
+            self._rating_var = tk.StringVar(value="未選択")
+
+            rating_menu = tk.OptionMenu(rating_frame, self._rating_var,
+                                       *rating_options, command=self._on_rating_selected)
+            rating_menu.config(bg="#34495e", fg="#ecf0f1", font=("Arial", 9),
+                             highlightthickness=0, bd=0)
+            rating_menu.pack(side=tk.LEFT, padx=(0, 5))
+
+            # 新規評価作成ボタン
+            create_btn = tk.Button(rating_frame, text="+", font=("Arial", 8, "bold"),
+                                 bg="#27ae60", fg="white", bd=0, padx=3,
+                                 command=self._create_new_rating)
+            create_btn.pack(side=tk.RIGHT, padx=(2, 5))
+
+            # 現在の評価表示エリア
+            display_frame = tk.Frame(frame, bg="#2c3e50")
+            display_frame.pack(fill=tk.X, pady=(2, 5))
+
+            # 評価名ラベル
+            self._current_rating_name_label = tk.Label(display_frame, text="未選択",
+                                                     font=("Arial", 10, "bold"),
+                                                     fg="#f39c12", bg="#2c3e50")
+            self._current_rating_name_label.pack(anchor="center", pady=(0, 3))
+
+            # 星のラベルを作成（6個：5個の通常評価＋1個の特別評価）
+            star_labels = []
+            star_frame = tk.Frame(display_frame, bg="#2c3e50")
+            star_frame.pack(anchor="center")
+
+            for i in range(6):
+                star_text = "★" if i < 5 else "☆"  # 6つ目は特別な星マーク
+                star_label = tk.Label(star_frame, text=star_text,
+                                    font=("Arial", 16, "bold"),
+                                    fg="#cccccc", bg="#2c3e50", cursor="hand2")
+                star_label.pack(side=tk.LEFT, padx=1)
+                star_label.bind("<Button-1>", lambda e, rating=i+1: self._on_rating_value_click(rating))
+                star_labels.append(star_label)
+
+            # 星ラベルを保存
+            rating_win._star_labels = star_labels
+            GazoPicture._rating_window = rating_win
+
+            # 初期状態を表示
+            self._update_rating_display(star_labels, 0)
+
+            return rating_win
+
+        except Exception as e:
+            logger.error(f"評価ウィンドウ作成エラー: {e}")
+            return None
+
+    def update_rating_window(self, image_hash=None):
+        """評価ウィンドウを更新"""
+        try:
+            # 評価ウィンドウが存在することを確認
+            rating_win = self.create_rating_window()
+            if not rating_win:
+                return
+
+            # 画像ハッシュを保存
+            GazoPicture._current_image_hash = image_hash
+
+            if image_hash:
+                # 現在の評価を取得して表示
+                tag_data = self.tag_dict.get(image_hash)
+                current_rating = tag_data["rating"] if tag_data and tag_data.get("rating") else 0
+                self._update_rating_display(rating_win._star_labels, current_rating)
+
+                # ウィンドウを表示
+                rating_win.deiconify()
+            else:
+                # 画像がない場合は非表示
+                rating_win.withdraw()
+
+        except Exception as e:
+            logger.error(f"評価ウィンドウ更新エラー: {e}")
+
+    def _on_rating_selected(self, rating_name):
+        """評価選択時の処理"""
+        try:
+            if rating_name == "未選択":
+                # 現在の画像から評価を解除
+                image_hash = GazoPicture._current_image_hash
+                if image_hash and image_hash in self.image_rating_map:
+                    del self.image_rating_map[image_hash]
+                    self._update_current_rating_display(0)
+                    self._update_info_window_for_current_image()
+                    logger.debug(f"画像から評価を解除: {image_hash[:8]}...")
+            else:
+                # 選択された評価を現在の画像に適用
+                image_hash = GazoPicture._current_image_hash
+                if image_hash:
+                    self.image_rating_map[image_hash] = rating_name
+                    rating_data = self.rating_dict.get(rating_name, {})
+                    rating_value = rating_data.get("rating", 0)
+                    self._update_current_rating_display(rating_value)
+                    self._update_info_window_for_current_image()
+                    logger.debug(f"画像に評価適用: {image_hash[:8]}... -> {rating_name}")
+        except Exception as e:
+            logger.error(f"評価選択エラー: {e}")
+
+    def _on_rating_value_click(self, rating):
+        """星クリック時の処理（評価値変更用）"""
+        try:
+            selected_rating = self._rating_var.get()
+            if selected_rating and selected_rating != "未選択":
+                # 選択されている評価の値を変更
+                if selected_rating not in self.rating_dict:
+                    self.rating_dict[selected_rating] = {"name": selected_rating, "rating": 0}
+
+                self.rating_dict[selected_rating]["rating"] = rating
+                save_ratings(self.rating_dict)
+
+                # 現在の画像がこの評価を使っている場合、表示を更新
+                image_hash = GazoPicture._current_image_hash
+                if image_hash and self.image_rating_map.get(image_hash) == selected_rating:
+                    self._update_current_rating_display(rating)
+                    self._update_info_window_for_current_image()
+
+                logger.debug(f"評価値変更: {selected_rating} = {rating}")
+            else:
+                logger.warning("評価が選択されていません")
+        except Exception as e:
+            logger.error(f"評価値変更エラー: {e}")
+
+    def _create_new_rating(self):
+        """新規評価作成ダイアログ"""
+        try:
+            # 新しい評価の名前を入力
+            rating_name = simpledialog.askstring("新規評価作成", "評価の名前を入力してください:",
+                                               parent=GazoPicture._rating_window)
+            if rating_name and rating_name.strip():
+                rating_name = rating_name.strip()
+                if rating_name not in self.rating_dict:
+                    # 新しい評価を作成
+                    self.rating_dict[rating_name] = {
+                        "name": rating_name,
+                        "rating": 3,  # デフォルトで3つ星
+                    }
+                    save_ratings(self.rating_dict)
+
+                    # ドロップダウンを更新
+                    self._update_rating_dropdown()
+
+                    # 新しい評価を選択
+                    self._rating_var.set(rating_name)
+                    self._on_rating_selected(rating_name)
+
+                    logger.debug(f"新規評価作成: {rating_name}")
+                else:
+                    messagebox.showwarning("警告", f"評価名「{rating_name}」は既に存在します。")
+        except Exception as e:
+            logger.error(f"新規評価作成エラー: {e}")
+
+    def _update_rating_dropdown(self):
+        """評価ドロップダウンを更新"""
+        try:
+            if GazoPicture._rating_window:
+                # 現在の選択を保存
+                current_selection = self._rating_var.get()
+
+                # メニューを再構築
+                rating_frame = None
+                for child in GazoPicture._rating_window.winfo_children():
+                    if isinstance(child, tk.Frame) and str(child.cget('bg')) == '#34495e':
+                        rating_frame = child
+                        break
+
+                if rating_frame:
+                    # OptionMenuを探して更新
+                    for child in rating_frame.winfo_children():
+                        if isinstance(child, tk.OptionMenu):
+                            child.destroy()
+                            break
+
+                    # 新しい評価リスト
+                    rating_options = ["未選択"] + list(self.rating_dict.keys())
+
+                    # 新しいOptionMenuを作成
+                    rating_menu = tk.OptionMenu(rating_frame, self._rating_var,
+                                               *rating_options, command=self._on_rating_selected)
+                    rating_menu.config(bg="#34495e", fg="#ecf0f1", font=("Arial", 9),
+                                     highlightthickness=0, bd=0)
+                    rating_menu.pack(side=tk.LEFT, padx=(0, 5))
+
+                    # 選択を復元（可能であれば）
+                    if current_selection in rating_options:
+                        self._rating_var.set(current_selection)
+        except Exception as e:
+            logger.error(f"評価ドロップダウン更新エラー: {e}")
+
+    def _update_current_rating_display(self, rating_value):
+        """現在の評価表示を更新"""
+        try:
+            if GazoPicture._rating_window and hasattr(GazoPicture._rating_window, '_star_labels'):
+                self._update_rating_display(GazoPicture._rating_window._star_labels, rating_value)
+
+                # 評価名も更新
+                selected_rating = self._rating_var.get()
+                if selected_rating and selected_rating != "未選択":
+                    self._current_rating_name_label.config(text=selected_rating)
+                else:
+                    self._current_rating_name_label.config(text="未選択")
+        except Exception as e:
+            logger.error(f"評価表示更新エラー: {e}")
+
+    def _update_info_window_for_current_image(self):
+        """現在の画像の情報ウィンドウを更新"""
+        try:
+            image_hash = GazoPicture._current_image_hash
+            if image_hash:
+                # 評価情報を更新
+                selected_rating = self.image_rating_map.get(image_hash)
+                if selected_rating and selected_rating in self.rating_dict:
+                    rating_value = self.rating_dict[selected_rating].get("rating", 0)
+                else:
+                    rating_value = 0
+
+                # 情報ウィンドウの評価情報を更新
+                if hasattr(self, 'update_info_window_rating'):
+                    self.update_info_window_rating(image_hash, rating_value)
+        except Exception as e:
+            logger.error(f"情報ウィンドウ更新エラー: {e}")
+
+    def update_rating_window_for_image(self, image_hash):
+        """画像ハッシュに基づいて評価ウィンドウを更新"""
+        try:
+            # 評価ウィンドウが存在することを確認
+            rating_win = self.create_rating_window()
+            if not rating_win:
+                return
+
+            # 画像ハッシュを保存
+            GazoPicture._current_image_hash = image_hash
+
+            if image_hash:
+                # この画像に割り当てられている評価を取得
+                assigned_rating = self.image_rating_map.get(image_hash)
+                if assigned_rating and assigned_rating in self.rating_dict:
+                    # 割り当てられている評価を選択
+                    self._rating_var.set(assigned_rating)
+                    rating_value = self.rating_dict[assigned_rating].get("rating", 0)
+                    self._update_current_rating_display(rating_value)
+                else:
+                    # 評価が割り当てられていない場合
+                    self._rating_var.set("未選択")
+                    self._update_current_rating_display(0)
+
+                # ウィンドウを表示
+                rating_win.deiconify()
+            else:
+                # 画像がない場合は非表示
+                rating_win.withdraw()
+
+        except Exception as e:
+            logger.error(f"評価ウィンドウ更新エラー: {e}")
+
+    def update_info_window_rating(self, image_hash, rating):
+        """情報ウィンドウの評価情報を更新"""
+        try:
+            if GazoPicture._info_window and hasattr(self, '_info_labels'):
+                rating_text = f"{rating}/6" + (" ★" * rating)
+                self._info_labels["rating"].config(text=rating_text)
+        except Exception as e:
+            logger.error(f"情報ウィンドウ評価更新エラー: {e}")
+
+    def create_info_window(self):
+        """独立した子ウィンドウとして情報ウィンドウを作成"""
+        if GazoPicture._info_window is not None:
+            try:
+                if GazoPicture._info_window.winfo_exists():
+                    return GazoPicture._info_window
+            except:
+                pass
+
+        try:
+            # メインウィンドウの子として情報ウィンドウを作成
+            info_win = tk.Toplevel(self.parent)
+            info_win.title("画像情報")
+            info_win.attributes("-topmost", True)
+            info_win.overrideredirect(True)  # タイトルバーなし
+            info_win.attributes("-alpha", 0.9)  # 半透明
+
+            # ディスプレイ右上に配置
+            screen_w = info_win.winfo_screenwidth()
+            screen_h = info_win.winfo_screenheight()
+            win_width = 300
+            win_height = 200
+            x = screen_w - win_width - 10  # 右端から10px左
+            y = 10  # 上端から10px下
+            info_win.geometry(f"{win_width}x{win_height}+{x}+{y}")
+
+            # 背景フレーム
+            frame = tk.Frame(info_win, bg="#2c3e50", bd=2, relief="raised")
+            frame.pack(fill=tk.BOTH, expand=True)
+
+            # タイトルラベル
+            title_label = tk.Label(frame, text="画像情報", font=("Arial", 12, "bold"),
+                                 fg="#ffffff", bg="#2c3e50")
+            title_label.pack(pady=(10, 5))
+
+            # 情報表示用のフレーム
+            info_frame = tk.Frame(frame, bg="#34495e")
+            info_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+            # 情報ラベル群
+            self._info_labels = {}
+
+            info_items = [
+                ("filename", "ファイル名:"),
+                ("size", "画像サイズ:"),
+                ("filesize", "ファイルサイズ:"),
+                ("zoom", "ズーム倍率:"),
+                ("tags", "タグ:"),
+                ("rating", "評価:")
+            ]
+
+            for key, label_text in info_items:
+                # ラベルフレーム
+                item_frame = tk.Frame(info_frame, bg="#34495e")
+                item_frame.pack(fill=tk.X, pady=1)
+
+                # 項目名ラベル
+                label = tk.Label(item_frame, text=label_text, font=("Arial", 9),
+                               fg="#ecf0f1", bg="#34495e", anchor="w")
+                label.pack(side=tk.LEFT, padx=(0, 5))
+
+                # 値ラベル
+                value_label = tk.Label(item_frame, text="", font=("Arial", 9),
+                                     fg="#f39c12", bg="#34495e", anchor="w")
+                value_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                self._info_labels[key] = value_label
+
+            GazoPicture._info_window = info_win
+            return info_win
+
+        except Exception as e:
+            logger.error(f"情報ウィンドウ作成エラー: {e}")
+            return None
+
+    def update_info_window(self, image_path=None, image_hash=None, width=None, height=None, zoom_percent=None):
+        """情報ウィンドウを更新"""
+        try:
+            # 情報ウィンドウが存在することを確認
+            info_win = self.create_info_window()
+            if not info_win or not hasattr(self, '_info_labels'):
+                return
+
+            if image_path and image_hash:
+                # ファイル名
+                filename = os.path.basename(image_path)
+                self._info_labels["filename"].config(text=filename)
+
+                # 画像サイズ
+                if width and height:
+                    size_text = f"{width} × {height}"
+                else:
+                    size_text = "不明"
+                self._info_labels["size"].config(text=size_text)
+
+                # ファイルサイズ
+                try:
+                    if os.path.exists(image_path):
+                        file_size = os.path.getsize(image_path)
+                        if file_size < 1024:
+                            size_text = f"{file_size} B"
+                        elif file_size < 1024 * 1024:
+                            size_text = f"{file_size / 1024:.1f} KB"
+                        else:
+                            size_text = f"{file_size / (1024 * 1024):.1f} MB"
+                    else:
+                        size_text = "不明"
+                except:
+                    size_text = "不明"
+                self._info_labels["filesize"].config(text=size_text)
+
+                # ズーム倍率
+                if zoom_percent:
+                    zoom_text = f"{zoom_percent}%"
+                else:
+                    zoom_text = "100%"
+                self._info_labels["zoom"].config(text=zoom_text)
+
+                # タグ情報
+                tag_data = self.tag_dict.get(image_hash)
+                if tag_data and tag_data.get("tag"):
+                    tags_text = tag_data["tag"]
+                else:
+                    tags_text = "なし"
+                self._info_labels["tags"].config(text=tags_text)
+
+                # 評価情報（新しい評価システム）
+                assigned_rating = self.image_rating_map.get(image_hash)
+                if assigned_rating and assigned_rating in self.rating_dict:
+                    rating_data = self.rating_dict[assigned_rating]
+                    rating_value = rating_data.get("rating", 0)
+                    rating_text = f"{assigned_rating}: {rating_value}/6" + (" ★" * rating_value)
+                else:
+                    rating_text = "未評価"
+                self._info_labels["rating"].config(text=rating_text)
+
+                # ウィンドウを表示
+                info_win.deiconify()
+            else:
+                # 情報がない場合は非表示
+                info_win.withdraw()
+
+        except Exception as e:
+            logger.error(f"情報ウィンドウ更新エラー: {e}")
+
+    def _update_rating_display(self, star_labels, rating):
+        """評価表示を更新"""
+        try:
+            for i, star_label in enumerate(star_labels):
+                if i < rating:
+                    # 評価済みの星（金色）
+                    star_label.config(fg="#ffd700")
+                else:
+                    # 未評価の星（灰色）
+                    star_label.config(fg="#cccccc")
+        except Exception as e:
+            logger.error(f"評価表示更新エラー: {e}")
 
     def set_image_tag(self, img_window, image_hash):
         """画像ウィンドウにタグラベルを付与するのじゃ。のじゃ。"""
@@ -498,6 +1003,13 @@ class GazoPicture():
                 win.destroy()
             except: pass
         self.open_windows.clear()
+
+        # 評価ウィンドウと情報ウィンドウは非表示にする（独立しているため閉じない）
+        GazoPicture._current_image_hash = None
+        if GazoPicture._rating_window:
+            GazoPicture._rating_window.withdraw()
+        if GazoPicture._info_window:
+            GazoPicture._info_window.withdraw()
 
     def Drawing(self, fileName):
         if not fileName: return
@@ -646,8 +1158,16 @@ class GazoPicture():
                     del self.open_windows[fullName]
                 win.destroy()
             win.protocol("WM_DELETE_WINDOW", on_img_close)
-            # 画像下部に解釈テキスト表示領域を確保するために高さを少し増やす
-            text_area_h = 88
+
+            # 表示するUI要素によって高さを動的に調整
+            text_area_h = 0
+
+            # ベクトル表示が有効な場合
+            if app_state.vector_display.get("enabled", True):
+                text_area_h += 40  # ベクトル表示領域の高さ
+
+            # 評価は独立ウィンドウでのみ管理するため、画像ウィンドウの高さには加算しない
+
             win.geometry(f"{new_w}x{new_h + text_area_h}+{base_x}+{base_y}")
             
             # メイン領域: 画像キャンバス
@@ -658,22 +1178,47 @@ class GazoPicture():
             canvas.image = tkimg
             canvas.create_image(0, 0, image=tkimg, anchor=tk.NW)
 
-            # 解釈テキストを表示するラベル（スクロール不要の短い要約を想定）
+                # 解釈テキストを表示するラベル（スクロール不要の短い要約を想定）
             interp_label = tk.Label(frame, text="", justify=tk.LEFT, anchor="w", bg="#ffffff", fg="#000000", wraplength=new_w - 8)
             interp_label.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(4,6))
 
-            # ベクトルがあれば解釈を取得して表示
-            try:
-                vec = self.vectors_cache.get(win._image_hash)
-                if vec:
-                    interpreter = get_interpreter({"vector_display": getattr(app_state, 'vector_display', {})})
-                    interp = interpreter.interpret_vector(vec)
-                    interp_text = interpreter.format_interpretation_text(interp)
-                    interp_label.config(text=interp_text)
-                else:
-                    interp_label.config(text="(ベクトル未登録) ベクトルデータを先に作成してください")
-            except Exception as e:
-                interp_label.config(text=f"解釈取得エラー: {e}")
+            # ベクトルがあれば解釈を取得して表示（設定による）
+            if app_state.vector_display.get("enabled", True):
+                try:
+                    vec = self.vectors_cache.get(win._image_hash)
+                    if vec:
+                        interpreter = get_interpreter({"vector_display": getattr(app_state, 'vector_display', {})})
+                        interp = interpreter.interpret_vector(vec)
+                        interp_text = interpreter.format_interpretation_text(interp)
+                        interp_label.config(text=interp_text)
+                        interp_label.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(4,6))  # ベクトル表示時はpack
+                    else:
+                        interp_label.config(text="(ベクトル未登録) ベクトルデータを先に作成してください")
+                        interp_label.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(4,6))  # ベクトル表示時はpack
+                except Exception as e:
+                    interp_label.config(text=f"解釈取得エラー: {e}")
+                    interp_label.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(4,6))  # ベクトル表示時はpack
+            # ベクトル表示が無効の場合、ラベルをpackしない（スペースを取らない）
+
+            # 評価は独立した評価ウィンドウでのみ管理するため、画像ウィンドウ内には表示しない
+
+            # 評価変更時のコールバック登録
+            def on_rating_changed(event_name, data):
+                if event_name == "image_rating_changed" and data["image_hash"] == win._image_hash:
+                    self._update_rating_display(star_labels, data["new_rating"])
+
+            app_state.register_callback(on_rating_changed)
+
+            # ウィンドウ破棄時にコールバック解除
+            def cleanup_callback():
+                try:
+                    app_state.unregister_callback(on_rating_changed)
+                except:
+                    pass
+                win.after_cancel(cleanup_callback)
+
+            # ウィンドウ破棄時にコールバック解除（少し遅延させて確実に実行）
+            win.bind("<Destroy>", lambda e: win.after(100, cleanup_callback))
 
             # ウィンドウドラッグ移動機能の実装なのじゃ（安定版）
             def start_drag(event, target_win):
@@ -689,6 +1234,15 @@ class GazoPicture():
             win._image_path = fileName
             win._image_hash = calculate_file_hash(fullName)
             self.set_image_tag(win, win._image_hash)
+
+            # 評価ウィンドウを更新（画像表示時）
+            if app_state.show_rating_window:
+                self.update_rating_window_for_image(win._image_hash)
+
+            # 情報ウィンドウを更新（画像表示時）
+            if app_state.show_info_window:
+                zoom_percent = int(scale * 100)
+                self.update_info_window(fileName, win._image_hash, new_w, new_h, zoom_percent)
 
             def open_tag_menu(event):
                 menu = tk.Menu(win, tearoff=0)
@@ -711,12 +1265,19 @@ class GazoPicture():
 
             data = self.tag_dict.get(image_hash)
             current_tag = data["tag"] if data else ""
-            
+            current_rating = data["rating"] if data and data.get("rating") else None
+
             new_tag = simpledialog.askstring("タグ編集", f"{filename} のタグを入力してください（;区切り）:", initialvalue=current_tag, parent=parent_win)
-            
+
             if new_tag is not None:
-                # ハッシュをキーにして保存するのじゃ
-                self.tag_dict[image_hash] = {"tag": new_tag, "hint": filename}
+                # ハッシュをキーにして保存するのじゃ（評価も保持）
+                if image_hash not in self.tag_dict:
+                    self.tag_dict[image_hash] = {"tag": "", "hint": "", "rating": None}
+                self.tag_dict[image_hash]["tag"] = new_tag
+                self.tag_dict[image_hash]["hint"] = filename
+                # 既存の評価を保持
+                if current_rating is not None:
+                    self.tag_dict[image_hash]["rating"] = current_rating
                 save_tags(self.tag_dict)
                 if update_target_win:
                     self.set_image_tag(update_target_win, image_hash)
