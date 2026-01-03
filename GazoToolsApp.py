@@ -7,13 +7,16 @@
 import os
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 from PIL import ImageTk, Image
 from tkinterdnd2 import *
 import shutil
+import psutil                 # CPU／メモリ取得用
+import threading              # バックグラウンドスレッド用
+import time                   # スリープ用
 
 # ロジックモジュールのインポート
-from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture
+from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor
 from lib.GazoToolsBasicLib import tkConvertWinSize
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
 
@@ -178,7 +181,7 @@ def create_file_list_window(parent, files, draw_func):
     win = tk.Toplevel(parent)
     win.title("子絵窓 - ファイル一覧")
     win.attributes("-topmost", True)
-    tk.Label(win, text="画像ファイル一覧 (クリックで表示)", font=("Helvetica", "9", "bold")).pack(pady=5)
+    tk.Label(win, text="画像ファイル一覧 (Wクリックで表示)", font=("Helvetica", "9", "bold")).pack(pady=5)
     
     frame = tk.Frame(win)
     frame.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
@@ -189,12 +192,73 @@ def create_file_list_window(parent, files, draw_func):
     lb.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
     scrollbar.config(command=lb.yview)
     
-    def on_select(event):
+    # ダブルクリックで表示
+    def on_double_click(event):
         try:
             idx = lb.curselection()
             if idx: draw_func(lb.get(idx[0]))
         except: pass
-    lb.bind("<<ListboxSelect>>", on_select)
+    lb.bind("<Double-Button-1>", on_double_click)
+
+    # 右クリックメニュー
+    def on_right_click(event):
+        try:
+            # クリック位置を選択状態にする
+            idx = lb.nearest(event.y)
+            lb.selection_clear(0, tk.END)
+            lb.selection_set(idx)
+            lb.activate(idx)
+            filename = lb.get(idx)
+            full_path = os.path.join(DEFOLDER, filename)
+
+            popup = tk.Menu(win, tearoff=0)
+
+            # 名前変更
+            def rename_file():
+                root, ext = os.path.splitext(filename)
+                new_root = simpledialog.askstring("名前変更", f"新しいファイル名を入力してほしいのじゃ（{ext}は自動付与）:", initialvalue=root, parent=win)
+                if new_root and new_root != root:
+                    try:
+                        new_name = new_root + ext
+                        new_path = os.path.join(DEFOLDER, new_name)
+                        os.rename(full_path, new_path)
+                        refresh_ui(DEFOLDER)
+                        print(f"[RENAME] {filename} -> {new_name}")
+                    except Exception as e:
+                        messagebox.showerror("エラー", f"名前変更に失敗したのじゃ: {e}")
+            
+            popup.add_command(label="名前変更", command=rename_file)
+
+            # 登録フォルダに移動
+            move_menu = tk.Menu(popup, tearoff=0)
+            popup.add_cascade(label="登録フォルダに移動", menu=move_menu)
+            
+            def make_move_func(dest):
+                return lambda: execute_move(full_path, dest)
+
+            for i in range(move_dest_count):
+                dest = move_dest_list[i]
+                if dest:
+                    move_menu.add_command(label=f"{i+1}: {os.path.basename(dest)}", command=make_move_func(dest))
+                else:
+                    move_menu.add_command(label=f"{i+1}: (未登録)", state="disabled")
+
+            # タグ追加
+            def add_tag():
+                h = calculate_file_hash(full_path)
+                if h:
+                    GazoControl.edit_tag_dialog(win, filename, h, update_target_win=None)
+                else:
+                    messagebox.showerror("エラー", "ハッシュ計算に失敗したのじゃ")
+
+            popup.add_command(label="タグ追加/編集", command=add_tag)
+
+            popup.post(event.x_root, event.y_root)
+        except Exception as e:
+            print(f"ファイル一覧右クリックエラー: {e}")
+
+    lb.bind("<Button-3>", on_right_click)
+
     return win, lb
 
 # --- メイン処理 ---
@@ -203,9 +267,15 @@ koRoot.attributes("-topmost", True)
 koRoot.geometry(tkConvertWinSize(list([200, 150, 50, 100])))
 koRoot.title("画像tools")
 
-# 状態管理
+# ★ ここからステータスラベルを追加 ★
+status_label = tk.Label(koRoot, text="CPU: 0%  MEM: 0 MB", anchor="e")
+status_label.pack(fill=tk.X, side=tk.BOTTOM)
+
+# 状態管理 (SS mode)
 ss_mode = tk.BooleanVar(value=SAVED_SETTINGS.get("ss_mode", False))
 ss_interval = tk.IntVar(value=SAVED_SETTINGS.get("ss_interval", 5))
+ss_ai_mode = tk.BooleanVar(value=SAVED_SETTINGS.get("ss_ai_mode", False))
+ss_ai_threshold = tk.DoubleVar(value=SAVED_SETTINGS.get("ss_ai_threshold", 0.65))
 ss_after_id = None
 
 # --- D&Dエリアの構築（複数移動先・循環登録） ---
@@ -239,7 +309,18 @@ def update_dd_display():
 def auto_slideshow():
     global ss_after_id
     if ss_mode.get():
-        GazoControl.Drawing(data_manager.RandamGazoSet())
+        next_image = None
+        # AIモードかランダムモードかで分岐するのじゃ
+        if ss_ai_mode.get():
+            try:
+                next_image = data_manager.GetNextAIImage(ss_ai_threshold.get())
+            except Exception as e:
+                print(f"AI再生エラー: {e}")
+                next_image = data_manager.RandamGazoSet()
+        else:
+            next_image = data_manager.RandamGazoSet()
+
+        GazoControl.Drawing(next_image)
         ms = max(1000, ss_interval.get() * 1000)
         ss_after_id = koRoot.after(ms, auto_slideshow)
     else:
@@ -273,6 +354,8 @@ def on_closing_main():
             "show_file": show_file_win.get(),
             "ss_mode": ss_mode.get(),
             "ss_interval": ss_interval.get(),
+            "ss_ai_mode": ss_ai_mode.get(),
+            "ss_ai_threshold": ss_ai_threshold.get(),
             "move_dest_list": move_dest_list,
             "move_reg_idx": move_reg_idx,
             "move_dest_count": move_dest_count
@@ -302,8 +385,58 @@ GazoControl = GazoPicture(koRoot, DEFOLDER)
 GazoControl.random_pos.set(SAVED_SETTINGS.get("random_pos", False))
 koRoot.attributes("-topmost", SAVED_SETTINGS.get("topmost", True))
 
+# --- リソース表示設定 (ユーザー設定) ---
+# 背景色のグラデーション用設定変数 (デフォルトは緑→赤)
+cpu_low_color = tk.StringVar(value=SAVED_SETTINGS.get("cpu_low_color", "#e0ffe0"))   # 低負荷時の色
+cpu_high_color = tk.StringVar(value=SAVED_SETTINGS.get("cpu_high_color", "#ff8080"))  # 高負荷時の色
+
+def set_cpu_low_color():
+    val = simpledialog.askstring("リソース表示設定", "CPU低負荷時の背景色 (hex) を入力してください:", initialvalue=cpu_low_color.get())
+    if val:
+        cpu_low_color.set(val)
+        # 設定保存は on_closing_main で行われる
+
+def set_cpu_high_color():
+    val = simpledialog.askstring("リソース表示設定", "CPU高負荷時の背景色 (hex) を入力してください:", initialvalue=cpu_high_color.get())
+    if val:
+        cpu_high_color.set(val)
+
+# カラーブレンド関数 (hex -> hex)
+def blend_color(hex_low, hex_high, ratio):
+    # ratio: 0.0 (low) .. 1.0 (high)
+    low = int(hex_low.lstrip('#'), 16)
+    high = int(hex_high.lstrip('#'), 16)
+    r = int(((low >> 16) & 0xFF) * (1 - ratio) + ((high >> 16) & 0xFF) * ratio)
+    g = int(((low >> 8) & 0xFF) * (1 - ratio) + ((high >> 8) & 0xFF) * ratio)
+    b = int((low & 0xFF) * (1 - ratio) + (high & 0xFF) * ratio)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+# ★ ここからリソース監視スレッドを起動 ★
+def _update_resource_usage():
+    while True:
+        cpu = psutil.cpu_percent(interval=1)          # 1 秒ごとに測定
+        mem = psutil.Process().memory_info().rss // (1024 * 1024)  # MB 単位
+        # CPU 使用率に応じて背景色をブレンド
+        ratio = min(cpu / 100.0, 1.0)
+        bg = blend_color(cpu_low_color.get(), cpu_high_color.get(), ratio)
+        status_label.config(text=f"CPU: {cpu}%  MEM: {mem} MB", bg=bg)
+        time.sleep(1)
+threading.Thread(target=_update_resource_usage, daemon=True).start()
+# ★ ここまで ★
+
+# --- メニューに設定項目を追加 ---
 menubar = tk.Menu(koRoot)
 koRoot.config(menu=menubar)
+config_menu = tk.Menu(menubar, tearoff=0) 
+
+# 既存の config_menu 定義の直後に以下を追加
+resource_sub = tk.Menu(config_menu, tearoff=0)
+config_menu.add_cascade(label="リソース表示設定", menu=resource_sub)
+resource_sub.add_command(label="CPU低負荷時の色設定", command=set_cpu_low_color)
+resource_sub.add_command(label="CPU高負荷時の色設定", command=set_cpu_high_color)
+
+
+
 file_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="ファイル(F)", menu=file_menu)
 file_menu.add_command(label="フォルダを開く...", command=lambda: refresh_ui(safe_select_folder()))
@@ -343,9 +476,59 @@ config_menu.add_separator()
 config_menu.add_checkbutton(label="スクリーンセーバー(自動再生)", variable=ss_mode, command=toggle_ss)
 
 ss_sub = tk.Menu(config_menu, tearoff=0)
-config_menu.add_cascade(label="再生間隔（秒）", menu=ss_sub)
+config_menu.add_cascade(label="SS設定", menu=ss_sub)
+
+# 再生間隔
+ss_interval_menu = tk.Menu(ss_sub, tearoff=0)
+ss_sub.add_cascade(label="再生間隔（秒）", menu=ss_interval_menu)
 for sec in [1, 2, 3, 5, 10, 20, 30]:
-    ss_sub.add_radiobutton(label=f"{sec}秒", variable=ss_interval, value=sec)
+    ss_interval_menu.add_radiobutton(label=f"{sec}秒", variable=ss_interval, value=sec)
+
+# AI設定
+ss_sub.add_separator()
+ss_sub.add_checkbutton(label="AI類似度順で再生", variable=ss_ai_mode)
+
+def set_ai_threshold():
+    val = simpledialog.askfloat("AI設定", "類似度スコアの閾値(0.0〜1.0)を設定してほしいのじゃ：", 
+                                initialvalue=ss_ai_threshold.get(), minvalue=0.0, maxvalue=1.0)
+    if val is not None:
+        ss_ai_threshold.set(val)
+
+ss_sub.add_command(label="類似度の閾値を設定...", command=set_ai_threshold)
+
+# ツールメニュー
+tools_menu = tk.Menu(menubar, tearoff=0)
+
+menubar.add_cascade(label="ツール(T)", menu=tools_menu)
+
+processor = None
+def run_vector_update():
+    """AIベクトル更新を実行するのじゃ。のじゃ。"""
+    global processor
+    if processor and processor.is_alive():
+        messagebox.showinfo("情報", "既にバックグラウンドで処理中なのじゃ。")
+        return
+
+    msg = "AI(MobileNetV3)を使って画像のベクトル化を行うのじゃ。\n処理はバックグラウンドで行われるので、ウィンドウ操作は継続できるのじゃ。\n\n開始しても良いかの？"
+    if not messagebox.askyesno("確認", msg):
+        return
+
+    # プログレスコールバック
+    def on_progress(current, total, filename):
+        # メインスレッドでUI更新（after経由）
+        koRoot.after(0, lambda: koRoot.title(f"画像tools - {current}/{total} {filename} を解析中..."))
+
+    # 完了コールバック
+    def on_finish(message):
+        def _finish_ui():
+            koRoot.title(f"画像tools - {DEFOLDER}")
+            messagebox.showinfo("完了", message)
+        koRoot.after(0, _finish_ui)
+
+    processor = VectorBatchProcessor(DEFOLDER, on_progress, on_finish)
+    processor.start()
+
+tools_menu.add_command(label="AIベクトルを更新・作成", command=run_vector_update)
 
 # 移動先フォルダ数の設定メニュー
 count_var = tk.IntVar(value=move_dest_count)
@@ -405,9 +588,9 @@ lbl_reg.pack(fill=tk.BOTH, padx=5, pady=(5, 15)) # 15ピクセルの余白をあ
 
 # 移動エリアを保持するフレーム
 move_frame = tk.Frame(koRoot)
-move_frame.pack(fill=tk.BOTH, padx=5, pady=(0, 5))
+move_frame.pack(fill=tk.BOTH, padx=5, pady=(0, 5), expand=True)
 
-def execute_move(file_path, dest_folder):
+def execute_move(file_path, dest_folder, refresh=True):
     if not dest_folder or not os.path.exists(dest_folder):
         messagebox.showerror("エラー", "移動先フォルダが正しく登録されていないのじゃ！")
         return
@@ -415,7 +598,8 @@ def execute_move(file_path, dest_folder):
         filename = os.path.basename(file_path)
         shutil.move(file_path, os.path.join(dest_folder, filename))
         print(f"[MOVE] {filename} -> {dest_folder}")
-        refresh_ui(DEFOLDER)
+        if refresh:
+            refresh_ui(DEFOLDER)
     except Exception as e:
         messagebox.showerror("失敗", f"移動中にエラーが起きたのじゃ: {e}")
 
@@ -443,10 +627,26 @@ def rebuild_move_area():
         
         # クロージャ問題対策のため、iを引数で固定するのじゃ
         def make_drop_func(idx):
-            return lambda e: (
-                data := e.data[1:-1] if e.data.startswith('{') else e.data,
-                execute_move(os.path.normpath(data), move_dest_list[idx]) if not os.path.isdir(os.path.normpath(data)) else messagebox.showwarning("注意", "ここはファイル移動用なのじゃ！")
-            )
+            def drop_handler(event):
+                try:
+                    # 複数ファイルのパース処理（Tkinterのsplitlistを使うと波括弧なども正しく捌けるのじゃ）
+                    files = koRoot.tk.splitlist(event.data)
+                    count = 0
+                    for f in files:
+                        p = os.path.normpath(f)
+                        if os.path.isfile(p):
+                            # ループ中はrefresh=Falseにして高速化するのじゃ
+                            execute_move(p, move_dest_list[idx], refresh=False)
+                            count += 1
+                        elif os.path.isdir(p):
+                             messagebox.showwarning("注意", f"フォルダは移動できないのじゃ: {p}")
+                    
+                    if count > 0:
+                        refresh_ui(DEFOLDER)
+                        print(f"[BATCH MOVE] 合計 {count} 個のファイルを移動して画面を更新したのじゃ。")
+                except Exception as e:
+                    print(f"ドロップ処理エラー: {e}")
+            return drop_handler
         
         l.dnd_bind("<<Drop>>", make_drop_func(i))
         l.grid(row=i // cols, column=i % cols, sticky="nsew", padx=1, pady=1)

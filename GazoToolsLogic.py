@@ -5,13 +5,21 @@
 import os
 import json
 import random
+import csv
+import hashlib
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog
 from PIL import ImageTk, Image, ImageOps
 import math
 import ctypes
 from ctypes import wintypes
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
+from lib.GazoToolsAI import VectorEngine
+import threading
+import time
+
+TAG_CSV_FILE = os.path.join(os.path.dirname(__file__), "data", "tagdata.csv")
+VECTOR_DATA_FILE = os.path.join(os.path.dirname(__file__), "data", "vectordata.json")
 
 CONFIG_FILE = "config.json"
 
@@ -27,6 +35,8 @@ def load_config():
             "show_file": True,
             "ss_mode": False,
             "ss_interval": 5,
+            "ss_ai_mode": False,   # AI類似度再生モード
+            "ss_ai_threshold": 0.65, # 類似度の閾値
             "move_dest_list": [""] * 12,
             "move_reg_idx": 0,
             "move_dest_count": 2
@@ -66,20 +76,228 @@ def save_config(path, geometries=None, settings=None):
     except Exception as e:
         print(f"設定保存エラー: {e}")
 
+def calculate_file_hash(filepath):
+    """ファイルのMD5ハッシュ値を計算するのじゃ。のじゃ。"""
+    hash_md5 = hashlib.md5()
+    try:
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    except:
+        return None
+
+def load_tags():
+    """タグデータを読み込むのじゃ。のじゃ。"""
+    tags = {} # key: hash, value: {tag: "...", hint: "..."}
+    if os.path.exists(TAG_CSV_FILE):
+        try:
+            with open(TAG_CSV_FILE, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) >= 2:
+                        h = row[0]
+                        t = row[1]
+                        hint = row[2] if len(row) > 2 else ""
+                        tags[h] = {"tag": t, "hint": hint}
+        except Exception as e:
+            print(f"タグ読み込みエラー: {e}")
+    return tags
+
+def save_tags(tags):
+    """タグデータを保存するのじゃ。のじゃ。"""
+    try:
+        os.makedirs(os.path.dirname(TAG_CSV_FILE), exist_ok=True)
+        with open(TAG_CSV_FILE, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            for h, data in tags.items():
+                writer.writerow([h, data["tag"], data["hint"]])
+    except Exception as e:
+        print(f"タグ保存エラー: {e}")
+
+def load_vectors():
+    """ベクトルデータを読み込むのじゃ。のじゃ。"""
+    if os.path.exists(VECTOR_DATA_FILE):
+        try:
+            with open(VECTOR_DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: pass
+    return {}
+
+def save_vectors(vectors):
+    """ベクトルデータを保存するのじゃ。のじゃ。"""
+    try:
+        os.makedirs(os.path.dirname(VECTOR_DATA_FILE), exist_ok=True)
+        with open(VECTOR_DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(vectors, f)
+    except Exception as e:
+        print(f"ベクトル保存エラー: {e}")
+
+class VectorBatchProcessor(threading.Thread):
+    """バックグラウンドでベクトル化を行うスレッドクラスなのじゃ。"""
+    def __init__(self, folder_path, callback_progress=None, callback_finish=None):
+        super().__init__()
+        self.folder_path = folder_path
+        self.callback_progress = callback_progress
+        self.callback_finish = callback_finish
+        self.daemon = True # メイン終了時に一緒に終わるようにするのじゃ
+        self.running = True
+
+    def run(self):
+        engine = VectorEngine.get_instance()
+        if not engine.check_available():
+            if self.callback_finish: self.callback_finish("AIモデルが利用できないのじゃ")
+            return
+
+        all_items = os.listdir(self.folder_path)
+        files = GetGazoFiles(all_items, self.folder_path)
+        total = len(files)
+        vectors = load_vectors()
+        updated_count = 0
+        
+        print(f"ベクトル更新開始: {total}ファイルをチェックするのじゃ")
+        
+        start_time = time.time()
+        last_log_time = start_time
+        
+        for i, filename in enumerate(files):
+            if not self.running: break
+            
+            # タイムアウトチェック (10分)
+            current_time = time.time()
+            elapsed = current_time - start_time
+            if elapsed > 600:
+                print(f"ベクトル化処理がタイムアウトしたのじゃ (10分経過)。ここで打ち切るのじゃ。")
+                if self.callback_finish:
+                    self.callback_finish("タイムアウトにより停止したのじゃ")
+                break
+
+            # 経過表示 (1分ごと)
+            if current_time - last_log_time >= 60:
+                print(f"ベクトル化処理中... {i}/{total} ({int(elapsed)}秒経過)")
+                last_log_time = current_time
+
+            full_path = os.path.join(self.folder_path, filename)
+            file_hash = calculate_file_hash(full_path)
+            
+            # まだベクトルがない、あるいはハッシュが変わった場合のみ計算
+            if file_hash and file_hash not in vectors:
+                vec = engine.get_image_feature(full_path)
+                if vec:
+                    vectors[file_hash] = vec
+                    updated_count += 1
+            
+            if self.callback_progress:
+                self.callback_progress(i + 1, total, filename)
+            
+            # 少し休みを入れてCPUを占有しすぎないようにするのじゃ
+            time.sleep(0.01)
+
+        if updated_count > 0:
+            save_vectors(vectors)
+            
+        if self.callback_finish:
+            self.callback_finish(f"完了！ {updated_count}件のベクトルを新規追加したのじゃ。")
+
+    def stop(self):
+        self.running = False
+
 class HakoData():
     """画像データ保持クラスなのじゃ。のじゃ。"""
     def __init__(self, def_folder):
         self.StartFolder = def_folder
         self.GazoFiles = []
+        self.vectors_cache = {}
+        self.ai_playlist = []     # AI再生用のキュー
+        self.visited_files = set() # 表示済みファイル（AIモード用）
 
     def SetGazoFiles(self, GazoFiles, folder_path):
         self.StartFolder = folder_path
         self.GazoFiles = GazoFiles
+        # フォルダが変わったらキャッシュと状態をリセット
+        self.vectors_cache = load_vectors()
+        self.ai_playlist = []
+        self.visited_files = set()
 
     def RandamGazoSet(self):
+        """ランダム、またはAI順序で画像を返すのじゃ。のじゃ。"""
         if not self.GazoFiles:
             return None
         return random.choice(self.GazoFiles)
+
+    def GetNextAIImage(self, threshold):
+        """AI類似度順で次の画像を取得するのじゃ。のじゃ。"""
+        if not self.GazoFiles:
+            return None
+            
+        # プレイリストに残りがあればそれを返す
+        if self.ai_playlist:
+            next_img = self.ai_playlist.pop(0)
+            self.visited_files.add(next_img)
+            return next_img
+            
+        # プレイリストが空の場合、新しい「シード」を探す
+        # 未訪問のファイルの中から最初のものをシードにするのじゃ
+        seed_cand = [f for f in self.GazoFiles if f not in self.visited_files]
+        
+        if not seed_cand:
+            # 全て訪問済みの場合はリセットして最初から
+            self.visited_files.clear()
+            seed_cand = self.GazoFiles
+            
+        # シード決定（リストの先頭＝フォルダ順の若いもの＝「1番目の画像」）
+        seed_file = seed_cand[0]
+        
+        # シードをプレイリストの先頭に追加
+        self.ai_playlist.append(seed_file)
+        
+        # 類似画像を検索してプレイリストの後ろに繋げる処理
+        engine = VectorEngine.get_instance()
+        if engine.check_available():
+            seed_path = os.path.join(self.StartFolder, seed_file)
+            seed_hash = calculate_file_hash(seed_path)
+            
+            # シードのベクトル取得（キャッシュにあればラッキー）
+            seed_vec = self.vectors_cache.get(seed_hash)
+            if not seed_vec:
+                # 無ければ計算してみる
+                seed_vec = engine.get_image_feature(seed_path)
+                if seed_vec and seed_hash:
+                    self.vectors_cache[seed_hash] = seed_vec
+
+            if seed_vec:
+                # 他の画像の類似度を計算して高い順に並べる
+                sim_list = []
+                for f in seed_cand: # 自分自身も含むが、それは後で除外されるか、最初にpopされるのでOK
+                    if f == seed_file: continue
+                    
+                    f_path = os.path.join(self.StartFolder, f)
+                    f_hash = calculate_file_hash(f_path)
+                    f_vec = self.vectors_cache.get(f_hash)
+                    
+                    if not f_vec:
+                        # リアルタイム計算は重いので、キャッシュにない場合スキップするか検討。
+                        # ここではスキップするのじゃ（高速化のため）
+                        continue
+                        
+                    score = engine.compare_features(seed_vec, f_vec)
+                    if score >= threshold:
+                        sim_list.append((f, score))
+                
+                # 類似度が高い順にソート
+                sim_list.sort(key=lambda x: x[1], reverse=True)
+                
+                # プレイリストに追加
+                for f, s in sim_list:
+                    self.ai_playlist.append(f)
+                    # 訪問済みに追加しておかないと、次のシードとして選ばれてしまう可能性があるが、
+                    # 実際にはプレイリスト消化時に visited に入るのでOK。
+                    # ただし、二重登録を防ぐためにここで visited 扱いには...しないほうがいい。
+                    # プレイリストにあるものを次のシード候補から除外するロジックが必要。
+                    
+        # 準備できたので1つ返す
+        return self.GetNextAIImage(threshold) # 再帰呼び出しでpop(0)へ
+
 
 class GazoPicture():
     """画像表示制御クラスなのじゃ。のじゃ。"""
@@ -90,6 +308,26 @@ class GazoPicture():
         self.open_windows = {}
         self.folder_win = None
         self.file_win = None
+        self.tag_dict = load_tags()
+
+    def set_image_tag(self, img_window, image_hash):
+        """画像ウィンドウにタグラベルを付与するのじゃ。のじゃ。"""
+        if not image_hash: return
+        data = self.tag_dict.get(image_hash)
+        tag = data["tag"] if data else ""
+        
+        if tag:
+            # 既存のラベルがあれば更新、なければ作成
+            if hasattr(img_window, "_tag_label"):
+                img_window._tag_label.config(text=tag)
+            else:
+                lbl = tk.Label(img_window, text=tag, bg="#fffae6", fg="#333", font=("MS Gothic", 9), relief="solid")
+                lbl.place(relx=0, rely=0) # 左上に固定
+                img_window._tag_label = lbl
+        else:
+            # タグが空ならラベルを隠す
+            if hasattr(img_window, "_tag_label"):
+                img_window._tag_label.place_forget()
 
     def SetUI(self, folder_win, file_win):
         """UIウィンドウの参照を保持するのじゃ。のじゃ。"""
@@ -178,10 +416,43 @@ class GazoPicture():
                 ny = event.y_root - target_win._drag_start_y
                 target_win.geometry(f"+{nx}+{ny}")
 
+            # --- タグ機能の実装（ハッシュベース） ---
+            win._image_path = fileName
+            win._image_hash = calculate_file_hash(fullName)
+            self.set_image_tag(win, win._image_hash)
+
+            def open_tag_menu(event):
+                menu = tk.Menu(win, tearoff=0)
+                menu.add_command(label="タグを編集", command=lambda: self.edit_tag_dialog(win, fileName, win._image_hash, update_target_win=win))
+                menu.post(event.x_root, event.y_root)
+
             canvas.bind("<Button-1>", lambda e: start_drag(e, win))
             canvas.bind("<B1-Motion>", lambda e: do_drag(e, win))
+            canvas.bind("<Button-3>", open_tag_menu) # 右クリックでメニュー表示
+
         except Exception as e:
             print(f"画像表示エラー: {e}")
+
+    def edit_tag_dialog(self, parent_win, filename, image_hash, update_target_win=None):
+        """タグ編集ダイアログを表示するのじゃ。のじゃ。"""
+        try:
+            if not image_hash:
+                print("ハッシュ計算に失敗しているためタグ付けできないのじゃ。")
+                return
+
+            data = self.tag_dict.get(image_hash)
+            current_tag = data["tag"] if data else ""
+            
+            new_tag = simpledialog.askstring("タグ編集", f"{filename} のタグを入力してください（;区切り）:", initialvalue=current_tag, parent=parent_win)
+            
+            if new_tag is not None:
+                # ハッシュをキーにして保存するのじゃ
+                self.tag_dict[image_hash] = {"tag": new_tag, "hint": filename}
+                save_tags(self.tag_dict)
+                if update_target_win:
+                    self.set_image_tag(update_target_win, image_hash)
+        except Exception as e:
+            print(f"タグ編集エラー: {e}")
 
     def disable_all_topmost(self):
         """管理下の全ての画像ウィンドウの最前面表示を解除するのじゃ。のじゃ。"""
