@@ -1,17 +1,17 @@
 {
     "last_folder": "K:/最強に最高に最強",
     "geometries": {
-        "main": "511x380+211+830",
+        "main": "511x380+12+58",
         "folder": "310x430+11+0",
         "file": "600x800+331+0"
     },
     "settings": {
         "random_pos": true,
-        "topmost": 1,
+        "topmost": 0,
         "show_folder": true,
         "show_file": true,
-        "ss_mode": false,
-        "ss_interval": 10,
+        "ss_mode": true,
+        "ss_interval": 5,
         "ss_ai_mode": true,
         "ss_ai_threshold": 0.65,
         "move_dest_list": [
