@@ -1,0 +1,12 @@
+2026-01-04 02:38:45 - __main__ - WARNING - [test_error_handling.py:25] - これはWARNINGログです
+2026-01-04 02:38:45 - __main__ - ERROR - [test_error_handling.py:26] - これはERRORログです
+2026-01-04 02:38:45 - __main__ - ERROR - [test_error_handling.py:36] - ConfigError を捕捉: テスト用設定エラー
+2026-01-04 02:38:45 - __main__ - ERROR - [test_error_handling.py:42] - ImageLoadError を捕捉: テスト用画像読み込みエラー
+2026-01-04 02:46:21 - __main__ - ERROR - [test_app_state.py:163] - テスト実行エラー: 'cp932' codec can't encode character '\u2713' in position 0: illegal multibyte sequence
+Traceback (most recent call last):
+  File "K:\GitHub\Gazo_tools\test_app_state.py", line 148, in main
+    test_app_state_singleton()
+  File "K:\GitHub\Gazo_tools\test_app_state.py", line 23, in test_app_state_singleton
+    print("✓ AppState は同じインスタンスを返します\n")
+UnicodeEncodeError: 'cp932' codec can't encode character '\u2713' in position 0: illegal multibyte sequence
+2026-01-04 02:48:07 - lib.GazoToolsState - ERROR - [GazoToolsState.py:158] - 無効な個数: 5

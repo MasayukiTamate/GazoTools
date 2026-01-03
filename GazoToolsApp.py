@@ -1,6 +1,6 @@
 '''
 作成日: 2025年09月29日
-修正日: 2026年01月01日
+修正日: 2026年01月04日
 作成者: tamate masayuki
 機能: GazoTools メインアプリケーション (UI)
 '''
@@ -15,33 +15,151 @@ import psutil                 # CPU／メモリ取得用
 import threading              # バックグラウンドスレッド用
 import time                   # スリープ用
 
+# ロギングの初期化
+from lib.GazoToolsLogger import setup_logging, get_logger
+setup_logging(debug_mode=False)  # False=本番モード, True=デバッグモード
+logger = get_logger(__name__)
+
 # ロジックモジュールのインポート
 from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor
 from lib.GazoToolsBasicLib import tkConvertWinSize
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
+from lib.GazoToolsState import get_app_state
+from lib.GazoToolsImageCache import ImageCache, TileImageLoader
+from lib.config_defaults import (
+    calculate_folder_window_width, calculate_folder_window_height,
+    calculate_file_window_width, calculate_file_window_height,
+    WINDOW_SPACING, SCREEN_MARGIN, COLOR_MOVE_BG_1, COLOR_CPU_LOW, COLOR_CPU_HIGH,
+    get_move_grid_columns, MOVE_DESTINATION_SLOTS, MOVE_DESTINATION_MIN,
+    MOVE_DESTINATION_OPTIONS, COLOR_MOVE_BG_2, SS_INTERVAL_OPTIONS, 
+    MIN_AI_THRESHOLD, MAX_AI_THRESHOLD, DEFAULT_AI_THRESHOLD, COLOR_REGISTER_BG
+)
+
+# --- アプリケーション状態の初期化 ---
+app_state = get_app_state()
+
+# --- 画像キャッシュの初期化 ---
+try:
+    image_cache = ImageCache.get_instance(max_size_mb=256)
+    tile_loader = TileImageLoader(tile_size=(200, 200), cache_mb=256)
+    logger.info("ImageCache と TileImageLoader を初期化しました")
+except Exception as e:
+    logger.warning(f"ImageCache 初期化エラー: {e}")
+    image_cache = None
+    tile_loader = None
 
 # --- 設定の読み込みと初期化 ---
-CONFIG_DATA = load_config()
-DEFOLDER = CONFIG_DATA["last_folder"]
-SAVED_GEOS = CONFIG_DATA.get("geometries", {})
-SAVED_SETTINGS = CONFIG_DATA.get("settings", {})
+try:
+    CONFIG_DATA = load_config()
+    logger.info(f"設定ファイル読み込み成功: {CONFIG_DATA.get('last_folder')}")
+    # AppState に設定を復元
+    app_state.from_dict(CONFIG_DATA)
+except Exception as e:
+    logger.error(f"設定ファイル読み込み失敗: {e}")
+    messagebox.showerror("エラー", f"設定ファイルの読み込みに失敗しました:\n{e}")
+    CONFIG_DATA = {
+        "last_folder": os.getcwd(),
+        "geometries": {},
+        "settings": {}
+    }
+    app_state.current_folder = os.getcwd()
+
+# ショートカット用の変数（後方互換性）
+DEFOLDER = app_state.current_folder
+SAVED_GEOS = app_state.window_geometries
+SAVED_SETTINGS = {
+    "random_pos": app_state.random_pos,
+    "random_size": app_state.random_size,
+    "topmost": app_state.topmost,
+    "show_folder": app_state.show_folder_window,
+    "show_file": app_state.show_file_window,
+    "ss_mode": app_state.ss_mode,
+    "ss_interval": app_state.ss_interval,
+    "ss_ai_mode": app_state.ss_ai_mode,
+    "ss_ai_threshold": app_state.ss_ai_threshold,
+}
 
 # --- 共通のUI更新処理 ---
+def on_app_state_changed(event_name, data):
+    """AppState の変更に応じて UI を更新するコールバック
+    
+    Args:
+        event_name (str): イベント名
+        data (dict): イベントデータ
+    """
+    try:
+        if event_name == "folder_changed":
+            # フォルダ変更時の UI 更新
+            refresh_ui(data["path"])
+        
+        elif event_name == "move_destination_changed":
+            # 移動先変更時の表示更新
+            update_dd_display()
+        
+        elif event_name == "move_reg_idx_changed":
+            # 登録先インデックス変更時の表示更新
+            update_dd_display()
+        
+        elif event_name == "move_dest_count_changed":
+            # 移動先個数変更時
+            rebuild_move_area()
+        
+        elif event_name == "show_folder_window_changed":
+            # フォルダウィンドウ表示切り替え
+            if data["show"]:
+                folder_win.deiconify()
+            else:
+                folder_win.withdraw()
+        
+        elif event_name == "show_file_window_changed":
+            # ファイルウィンドウ表示切り替え
+            if data["show"]:
+                file_win.deiconify()
+            else:
+                file_win.withdraw()
+        
+        elif event_name == "ss_mode_changed":
+            # スクリーンセーバーモード切り替え
+            toggle_ss()
+        
+        elif event_name == "cpu_colors_changed":
+            # CPU色設定変更
+            logger.debug(f"CPU色が変更されました")
+        
+        elif event_name == "ss_include_subfolders_changed":
+            # 子フォルダ設定変更時
+            refresh_ui(DEFOLDER)
+    
+    except Exception as e:
+        logger.error(f"UI更新コールバックエラー ({event_name}): {e}", exc_info=True)
+
+# コールバックを登録
+app_state.register_callback(on_app_state_changed)
+
 def refresh_ui(new_path):
     """パスに基づいてUIを全更新するのじゃ。のじゃ。"""
     global DEFOLDER
-    if not os.path.exists(new_path): return
+    if not os.path.exists(new_path):
+        logger.warning(f"パスが存在しません: {new_path}")
+        return
+    
     DEFOLDER = new_path
     
     try:
         all_items = os.listdir(DEFOLDER)
         folders = GetKoFolder(all_items, DEFOLDER)
         files = GetGazoFiles(all_items, DEFOLDER)
+        logger.info(f"UI更新: {DEFOLDER} (フォルダ:{len(folders)}件, ファイル:{len(files)}件)")
     except Exception as e:
-        print(f"再読み込みエラー: {e}")
+        logger.error(f"再読み込みエラー: {e}", exc_info=True)
+        messagebox.showerror("エラー", f"フォルダの読み込みに失敗しました:\n{e}")
         return
 
-    data_manager.SetGazoFiles(files, DEFOLDER)
+    # AppState に反映
+    app_state.set_current_files(files)
+    app_state.set_current_folders(folders)
+    
+    data_manager.SetGazoFiles(files, DEFOLDER, include_subfolders=app_state.ss_include_subfolders)
     GazoControl.SetFolder(DEFOLDER)
     
     koRoot.title("画像tools - " + DEFOLDER)
@@ -70,7 +188,10 @@ def refresh_ui(new_path):
         adjust_window_layouts(folders, files)
 
 def adjust_window_layouts(folders, files):
-    """ウィンドウ配置の自動調整なのじゃ。のじゃ。"""
+    """ウィンドウ配置の自動調整なのじゃ。のじゃ。
+    
+    config_defaults.py の計算関数を使用してウィンドウサイズを決定します。
+    """
     root_x, root_y = koRoot.winfo_x(), koRoot.winfo_y()
     root_w = koRoot.winfo_width()
 
@@ -78,20 +199,20 @@ def adjust_window_layouts(folders, files):
     current_base = os.path.basename(DEFOLDER) or DEFOLDER
     f_names = [f"({len(files)}) [現在] {current_base}"] + [f"({len(folders)}) {f}" for f in folders]
     max_f = max([len(f) for f in f_names]) if f_names else 5
-    w_f = max(200, min(600, max_f * 10 + 60))
-    h_f = max(120, min(800, f_count * 20 + 90))
-    x_f, y_f = root_x + root_w + 10, root_y
+    w_f = calculate_folder_window_width(max_f)
+    h_f = calculate_folder_window_height(f_count)
+    x_f, y_f = root_x + root_w + WINDOW_SPACING, root_y
     folder_win.geometry(f"{w_f}x{h_f}+{x_f}+{y_f}")
     
     g_count = len(files)
     max_g = max([len(f) for f in files]) if files else 5
-    w_g = max(200, min(600, max_g * 8 + 80))
-    h_g = max(120, min(800, g_count * 20 + 70))
-    x_g, y_g = x_f + w_f + 10, root_y
+    w_g = calculate_file_window_width(max_g)
+    h_g = calculate_file_window_height(g_count)
+    x_g, y_g = x_f + w_f + WINDOW_SPACING, root_y
     
     screen_w = koRoot.winfo_screenwidth()
     if x_g + w_g > screen_w:
-        x_g = max(10, root_x - w_g - 10)
+        x_g = max(10, root_x - w_g - WINDOW_SPACING)
     file_win.geometry(f"{w_g}x{h_g}+{x_g}+{y_g}")
 
 def create_folder_list_window(parent, folders):
@@ -272,21 +393,27 @@ status_label = tk.Label(koRoot, text="CPU: 0%  MEM: 0 MB", anchor="e")
 status_label.pack(fill=tk.X, side=tk.BOTTOM)
 
 # 状態管理 (SS mode)
-ss_mode = tk.BooleanVar(value=SAVED_SETTINGS.get("ss_mode", False))
-ss_interval = tk.IntVar(value=SAVED_SETTINGS.get("ss_interval", 5))
-ss_ai_mode = tk.BooleanVar(value=SAVED_SETTINGS.get("ss_ai_mode", False))
-ss_ai_threshold = tk.DoubleVar(value=SAVED_SETTINGS.get("ss_ai_threshold", 0.65))
+ss_mode = tk.BooleanVar(value=app_state.ss_mode)
+ss_interval = tk.IntVar(value=app_state.ss_interval)
+ss_ai_mode = tk.BooleanVar(value=app_state.ss_ai_mode)
+ss_ai_threshold = tk.DoubleVar(value=app_state.ss_ai_threshold)
+ss_include_subfolders = tk.BooleanVar(value=app_state.ss_include_subfolders)
 ss_after_id = None
 
 # --- D&Dエリアの構築（複数移動先・循環登録） ---
-move_dest_list = SAVED_SETTINGS.get("move_dest_list", [""] * 12)
-move_reg_idx = SAVED_SETTINGS.get("move_reg_idx", 0)
-move_dest_count = SAVED_SETTINGS.get("move_dest_count", 2)
+move_dest_list = app_state.move_dest_list
+move_reg_idx = app_state.move_reg_idx
+move_dest_count = app_state.move_dest_count
 move_labels = [] # 動的生成したラベルの保持用
 move_text_vars = [] # 動的生成したStringVarの保持用
 
 def update_dd_display():
     """D&Dエリアの表示内容を最新の状態にするのじゃ。のじゃ。"""
+    # AppState から最新値を取得
+    move_dest_count = app_state.move_dest_count
+    move_reg_idx = app_state.move_reg_idx
+    move_dest_list = app_state.move_dest_list
+    
     marks = []
     for i in range(move_dest_count):
         if i == move_reg_idx:
@@ -337,31 +464,37 @@ def reset_move_destinations():
     """登録済みの移動先フォルダを全てリセットするのじゃ。のじゃ。"""
     if not messagebox.askyesno("確認", "全ての登録フォルダ設定をリセットしても良いかの？"):
         return
-    global move_reg_idx
-    for i in range(len(move_dest_list)):
-        move_dest_list[i] = ""
-    move_reg_idx = 0
+    app_state.reset_move_destinations()
     update_dd_display()
     print("[RESET] 全ての移動先をリセットしたのじゃ。")
 
 def on_closing_main():
     try:
-        geos = {"main": koRoot.winfo_geometry(), "folder": folder_win.winfo_geometry(), "file": file_win.winfo_geometry()}
-        sets = {
-            "random_pos": GazoControl.random_pos.get(), 
-            "topmost": koRoot.attributes("-topmost"), 
-            "show_folder": show_folder_win.get(), 
-            "show_file": show_file_win.get(),
-            "ss_mode": ss_mode.get(),
-            "ss_interval": ss_interval.get(),
-            "ss_ai_mode": ss_ai_mode.get(),
-            "ss_ai_threshold": ss_ai_threshold.get(),
-            "move_dest_list": move_dest_list,
-            "move_reg_idx": move_reg_idx,
-            "move_dest_count": move_dest_count
-        }
-        save_config(DEFOLDER, geos, sets)
-    except: pass
+        # ウィンドウジオメトリを保存
+        app_state.set_window_geometry("main", koRoot.winfo_geometry())
+        app_state.set_window_geometry("folder", folder_win.winfo_geometry())
+        app_state.set_window_geometry("file", file_win.winfo_geometry())
+        
+        # UI 設定を保存
+        app_state.set_random_pos(GazoControl.random_pos.get())
+        app_state.set_random_size(GazoControl.random_size.get())
+        app_state.set_topmost(koRoot.attributes("-topmost"))
+        app_state.set_show_folder_window(show_folder_win.get())
+        app_state.set_show_file_window(show_file_win.get())
+        app_state.set_ss_mode(ss_mode.get())
+        app_state.set_ss_interval(ss_interval.get())
+        app_state.set_ss_ai_mode(ss_ai_mode.get())
+        app_state.set_ss_ai_threshold(ss_ai_threshold.get())
+        app_state.set_ss_include_subfolders(ss_include_subfolders.get())
+        
+        # AppState を設定ファイルに保存
+        config_to_save = app_state.to_dict()
+        save_config(config_to_save["last_folder"], config_to_save["geometries"], config_to_save["settings"])
+        
+        logger.info("アプリケーション終了: 設定を保存しました")
+    except Exception as e:
+        logger.error(f"終了処理エラー: {e}", exc_info=True)
+    
     koRoot.destroy()
     sys.exit()
 
@@ -383,12 +516,13 @@ def disable_all_topmost():
 data_manager = HakoData(DEFOLDER)
 GazoControl = GazoPicture(koRoot, DEFOLDER)
 GazoControl.random_pos.set(SAVED_SETTINGS.get("random_pos", False))
+GazoControl.random_size.set(SAVED_SETTINGS.get("random_size", False))
 koRoot.attributes("-topmost", SAVED_SETTINGS.get("topmost", True))
 
 # --- リソース表示設定 (ユーザー設定) ---
-# 背景色のグラデーション用設定変数 (デフォルトは緑→赤)
-cpu_low_color = tk.StringVar(value=SAVED_SETTINGS.get("cpu_low_color", "#e0ffe0"))   # 低負荷時の色
-cpu_high_color = tk.StringVar(value=SAVED_SETTINGS.get("cpu_high_color", "#ff8080"))  # 高負荷時の色
+# 背景色のグラデーション用設定変数 (デフォルトは config_defaults から)
+cpu_low_color = tk.StringVar(value=SAVED_SETTINGS.get("cpu_low_color", COLOR_CPU_LOW))
+cpu_high_color = tk.StringVar(value=SAVED_SETTINGS.get("cpu_high_color", COLOR_CPU_HIGH))
 
 def set_cpu_low_color():
     val = simpledialog.askstring("リソース表示設定", "CPU低負荷時の背景色 (hex) を入力してください:", initialvalue=cpu_low_color.get())
@@ -435,6 +569,75 @@ config_menu.add_cascade(label="リソース表示設定", menu=resource_sub)
 resource_sub.add_command(label="CPU低負荷時の色設定", command=set_cpu_low_color)
 resource_sub.add_command(label="CPU高負荷時の色設定", command=set_cpu_high_color)
 
+# ベクトル表示設定ダイアログ
+def open_vector_settings():
+    win = tk.Toplevel(koRoot)
+    win.title("ベクトル表示設定")
+    win.attributes("-topmost", True)
+    cfg = app_state.vector_display.copy() if hasattr(app_state, 'vector_display') else {}
+
+    # モード選択
+    tk.Label(win, text="解釈モード:").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+    mode_var = tk.StringVar(value=cfg.get("interpretation_mode", "labels"))
+    mode_menu = tk.OptionMenu(win, mode_var, "labels", "shap", "custom")
+    mode_menu.grid(row=0, column=1, sticky="w", padx=6, pady=6)
+
+    # カテゴリ表示チェック
+    color_var = tk.BooleanVar(value=cfg.get("show_color_features", True))
+    edge_var = tk.BooleanVar(value=cfg.get("show_edge_features", True))
+    texture_var = tk.BooleanVar(value=cfg.get("show_texture_features", True))
+    shape_var = tk.BooleanVar(value=cfg.get("show_shape_features", True))
+    semantic_var = tk.BooleanVar(value=cfg.get("show_semantic_features", True))
+
+    tk.Checkbutton(win, text="色彩特徴を表示", variable=color_var).grid(row=1, column=0, columnspan=2, sticky="w", padx=6)
+    tk.Checkbutton(win, text="エッジ特徴を表示", variable=edge_var).grid(row=2, column=0, columnspan=2, sticky="w", padx=6)
+    tk.Checkbutton(win, text="テクスチャを表示", variable=texture_var).grid(row=3, column=0, columnspan=2, sticky="w", padx=6)
+    tk.Checkbutton(win, text="形状特徴を表示", variable=shape_var).grid(row=4, column=0, columnspan=2, sticky="w", padx=6)
+    tk.Checkbutton(win, text="セマンティック特徴を表示", variable=semantic_var).grid(row=5, column=0, columnspan=2, sticky="w", padx=6)
+
+    # 表示数・閾値
+    tk.Label(win, text="表示最大次元数:").grid(row=6, column=0, sticky="w", padx=6, pady=6)
+    max_var = tk.IntVar(value=cfg.get("max_dimensions_to_show", 10))
+    tk.Spinbox(win, from_=1, to=50, textvariable=max_var, width=6).grid(row=6, column=1, sticky="w", padx=6, pady=6)
+
+    tk.Label(win, text="類似度閾値:").grid(row=7, column=0, sticky="w", padx=6, pady=6)
+    thr_var = tk.DoubleVar(value=cfg.get("similarity_threshold", 0.05))
+    tk.Entry(win, textvariable=thr_var, width=8).grid(row=7, column=1, sticky="w", padx=6, pady=6)
+
+    def on_ok():
+        new_cfg = {
+            "enabled": True,
+            "interpretation_mode": mode_var.get(),
+            "show_color_features": color_var.get(),
+            "show_edge_features": edge_var.get(),
+            "show_texture_features": texture_var.get(),
+            "show_shape_features": shape_var.get(),
+            "show_semantic_features": semantic_var.get(),
+            "max_dimensions_to_show": int(max_var.get()),
+            "similarity_threshold": float(thr_var.get()),
+        }
+        app_state.vector_display.update(new_cfg)
+        # 保存は終了時にまとめて行うが、即時反映のため設定ファイルにも書き込む
+        cfg_all = app_state.to_dict()
+        # settings の中に vector_display を入れて保存
+        cfg_all_settings = cfg_all.get("settings", {})
+        cfg_all_settings["vector_display"] = app_state.vector_display
+        save_config(cfg_all["last_folder"], cfg_all.get("geometries", {}), cfg_all_settings)
+        # 更新完了
+        win.destroy()
+
+    def on_cancel():
+        win.destroy()
+
+    btn_frame = tk.Frame(win)
+    btn_frame.grid(row=8, column=0, columnspan=2, pady=8)
+    tk.Button(btn_frame, text="OK", width=10, command=on_ok).pack(side=tk.LEFT, padx=6)
+    tk.Button(btn_frame, text="キャンセル", width=10, command=on_cancel).pack(side=tk.LEFT, padx=6)
+
+# メニューに追加
+config_menu.add_separator()
+config_menu.add_command(label="ベクトル表示設定...", command=open_vector_settings)
+
 
 
 file_menu = tk.Menu(menubar, tearoff=0)
@@ -451,14 +654,23 @@ file_menu.add_command(label="エクスプローラーで開く(E)", command=open
 file_menu.add_separator()
 file_menu.add_command(label="終了(X)", command=on_closing_main)
 
-show_folder_win = tk.BooleanVar(value=SAVED_SETTINGS.get("show_folder", True))
-show_file_win = tk.BooleanVar(value=SAVED_SETTINGS.get("show_file", True))
+show_folder_win = tk.BooleanVar(value=app_state.show_folder_window)
+show_file_win = tk.BooleanVar(value=app_state.show_file_window)
 
 def update_visibility():
-    if show_folder_win.get(): folder_win.deiconify()
-    else: folder_win.withdraw()
-    if show_file_win.get(): file_win.deiconify()
-    else: file_win.withdraw()
+    if show_folder_win.get(): 
+        folder_win.deiconify()
+        app_state.set_show_folder_window(True)
+    else: 
+        folder_win.withdraw()
+        app_state.set_show_folder_window(False)
+    
+    if show_file_win.get(): 
+        file_win.deiconify()
+        app_state.set_show_file_window(True)
+    else: 
+        file_win.withdraw()
+        app_state.set_show_file_window(False)
 
 view_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="表示(V)", menu=view_menu)
@@ -471,7 +683,21 @@ view_menu.add_command(label="全ての最前面表示をOFF", command=disable_al
 
 config_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="設定(S)", menu=config_menu)
+
+# ランダム位置設定の変更をキャッチする関数
+def on_random_pos_change(*args):
+    app_state.set_random_pos(GazoControl.random_pos.get())
+
+GazoControl.random_pos.trace_add("write", on_random_pos_change)
 config_menu.add_checkbutton(label="表示位置をランダムにする", variable=GazoControl.random_pos)
+
+# ランダムサイズ設定の変更をキャッチする関数
+def on_random_size_change(*args):
+    app_state.set_random_size(GazoControl.random_size.get())
+
+GazoControl.random_size.trace_add("write", on_random_size_change)
+config_menu.add_checkbutton(label="表示サイズをランダムにする", variable=GazoControl.random_size)
+
 config_menu.add_separator()
 config_menu.add_checkbutton(label="スクリーンセーバー(自動再生)", variable=ss_mode, command=toggle_ss)
 
@@ -481,7 +707,7 @@ config_menu.add_cascade(label="SS設定", menu=ss_sub)
 # 再生間隔
 ss_interval_menu = tk.Menu(ss_sub, tearoff=0)
 ss_sub.add_cascade(label="再生間隔（秒）", menu=ss_interval_menu)
-for sec in [1, 2, 3, 5, 10, 20, 30]:
+for sec in SS_INTERVAL_OPTIONS:
     ss_interval_menu.add_radiobutton(label=f"{sec}秒", variable=ss_interval, value=sec)
 
 # AI設定
@@ -490,11 +716,23 @@ ss_sub.add_checkbutton(label="AI類似度順で再生", variable=ss_ai_mode)
 
 def set_ai_threshold():
     val = simpledialog.askfloat("AI設定", "類似度スコアの閾値(0.0〜1.0)を設定してほしいのじゃ：", 
-                                initialvalue=ss_ai_threshold.get(), minvalue=0.0, maxvalue=1.0)
+                                initialvalue=ss_ai_threshold.get(), minvalue=MIN_AI_THRESHOLD, maxvalue=MAX_AI_THRESHOLD)
     if val is not None:
         ss_ai_threshold.set(val)
+        app_state.set_ss_ai_threshold(val)
 
 ss_sub.add_command(label="類似度の閾値を設定...", command=set_ai_threshold)
+
+# 子フォルダを含める設定
+ss_sub.add_separator()
+
+def on_include_subfolders_change():
+    """子フォルダを含める設定を変更した時の処理"""
+    app_state.set_ss_include_subfolders(ss_include_subfolders.get())
+    # 現在のフォルダで画像リストを再構築
+    refresh_ui(DEFOLDER)
+
+ss_sub.add_checkbutton(label="子フォルダの画像も含める", variable=ss_include_subfolders, command=on_include_subfolders_change)
 
 # ツールメニュー
 tools_menu = tk.Menu(menubar, tearoff=0)
@@ -531,19 +769,76 @@ def run_vector_update():
 tools_menu.add_command(label="AIベクトルを更新・作成", command=run_vector_update)
 
 # 移動先フォルダ数の設定メニュー
-count_var = tk.IntVar(value=move_dest_count)
+count_var = tk.IntVar(value=app_state.move_dest_count)
 def change_move_count():
-    global move_dest_count
-    move_dest_count = count_var.get()
-    rebuild_move_area()
+    if app_state.set_move_dest_count(count_var.get()):
+        rebuild_move_area()
+    else:
+        messagebox.showerror("エラー", "無効な個数です")
+        count_var.set(app_state.move_dest_count)
 
 count_sub = tk.Menu(config_menu, tearoff=0)
 config_menu.add_cascade(label="移動先フォルダ数", menu=count_sub)
-for c in [2, 4, 6, 8, 10, 12]:
+for c in MOVE_DESTINATION_OPTIONS:
     count_sub.add_radiobutton(label=f"{c}個", variable=count_var, value=c, command=change_move_count)
 
 config_menu.add_separator()
 config_menu.add_command(label="全登録フォルダをリセット", command=reset_move_destinations)
+config_menu.add_separator()
+
+# 画像表示サイズ設定ダイアログ
+def open_image_size_settings():
+    """画像表示サイズ設定ダイアログを表示するのじゃ。"""
+    win = tk.Toplevel(koRoot)
+    win.title("画像表示サイズ設定")
+    win.attributes("-topmost", True)
+    
+    # 現在の設定値を取得
+    min_w = tk.IntVar(value=app_state.image_min_width)
+    min_h = tk.IntVar(value=app_state.image_min_height)
+    max_w = tk.IntVar(value=app_state.image_max_width)
+    max_h = tk.IntVar(value=app_state.image_max_height)
+    
+    from lib.config_defaults import MIN_IMAGE_SIZE_LIMIT, MAX_IMAGE_SIZE_LIMIT
+    
+    # 最小幅
+    tk.Label(win, text="最小幅 (ピクセル):").grid(row=0, column=0, sticky="w", padx=10, pady=5)
+    tk.Spinbox(win, from_=MIN_IMAGE_SIZE_LIMIT, to=MAX_IMAGE_SIZE_LIMIT, 
+               textvariable=min_w, width=10).grid(row=0, column=1, padx=10, pady=5)
+    
+    # 最小高さ
+    tk.Label(win, text="最小高さ (ピクセル):").grid(row=1, column=0, sticky="w", padx=10, pady=5)
+    tk.Spinbox(win, from_=MIN_IMAGE_SIZE_LIMIT, to=MAX_IMAGE_SIZE_LIMIT, 
+               textvariable=min_h, width=10).grid(row=1, column=1, padx=10, pady=5)
+    
+    # 最大幅（0は画面サイズの80%を使用）
+    tk.Label(win, text="最大幅 (0=画面の80%):").grid(row=2, column=0, sticky="w", padx=10, pady=5)
+    tk.Spinbox(win, from_=0, to=MAX_IMAGE_SIZE_LIMIT, 
+               textvariable=max_w, width=10).grid(row=2, column=1, padx=10, pady=5)
+    
+    # 最大高さ（0は画面サイズの80%を使用）
+    tk.Label(win, text="最大高さ (0=画面の80%):").grid(row=3, column=0, sticky="w", padx=10, pady=5)
+    tk.Spinbox(win, from_=0, to=MAX_IMAGE_SIZE_LIMIT, 
+               textvariable=max_h, width=10).grid(row=3, column=1, padx=10, pady=5)
+    
+    def on_ok():
+        app_state.set_image_size_limits(
+            min_w.get(), min_h.get(), max_w.get(), max_h.get()
+        )
+        # 設定を保存
+        cfg_all = app_state.to_dict()
+        save_config(cfg_all["last_folder"], cfg_all.get("geometries", {}), cfg_all["settings"])
+        win.destroy()
+    
+    def on_cancel():
+        win.destroy()
+    
+    btn_frame = tk.Frame(win)
+    btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
+    tk.Button(btn_frame, text="OK", width=10, command=on_ok).pack(side=tk.LEFT, padx=5)
+    tk.Button(btn_frame, text="キャンセル", width=10, command=on_cancel).pack(side=tk.LEFT, padx=5)
+
+config_menu.add_command(label="画像表示サイズ設定...", command=open_image_size_settings)
 config_menu.add_separator()
 config_menu.add_command(label="常に最前面(T) ON/OFF", command=lambda: koRoot.attributes("-topmost", not koRoot.attributes("-topmost")))
 
@@ -565,21 +860,19 @@ refresh_ui(DEFOLDER)
 
 # --- D&Dエリアの構築（2段構え） ---
 text_reg = tk.StringVar(koRoot)
-lbl_reg = tk.Label(koRoot, textvariable=text_reg, bg="#e0f0ff", height=2, bd=2, relief="groove")
+lbl_reg = tk.Label(koRoot, textvariable=text_reg, bg=COLOR_REGISTER_BG, height=2, bd=2, relief="groove")
 lbl_reg.drop_target_register(DND_FILES)
 
 def handle_drop_register(event):
-    global move_reg_idx
     data = event.data
     if data.startswith('{') and data.endswith('}'): data = data[1:-1]
     path = os.path.normpath(data)
     
     if os.path.isdir(path):
-        move_dest_list[move_reg_idx] = path
-        # 現在の数で循環させるのじゃ
-        move_reg_idx = (move_reg_idx + 1) % move_dest_count
+        app_state.set_move_destination(app_state.move_reg_idx, path)
+        app_state.rotate_move_reg_idx()
         update_dd_display()
-        print(f"[REGISTER] {move_reg_idx}番目に登録: {path}")
+        logger.info(f"[REGISTER] スロット{app_state.move_reg_idx}に登録: {path}")
     else:
         messagebox.showwarning("注意", "ここはフォルダ登録用なのじゃ！ファイルを動かしたいなら下へ入れるのじゃ。")
 
@@ -592,33 +885,43 @@ move_frame.pack(fill=tk.BOTH, padx=5, pady=(0, 5), expand=True)
 
 def execute_move(file_path, dest_folder, refresh=True):
     if not dest_folder or not os.path.exists(dest_folder):
+        logger.error(f"移動先フォルダが無効: {dest_folder}")
         messagebox.showerror("エラー", "移動先フォルダが正しく登録されていないのじゃ！")
         return
     try:
         filename = os.path.basename(file_path)
         shutil.move(file_path, os.path.join(dest_folder, filename))
-        print(f"[MOVE] {filename} -> {dest_folder}")
+        logger.info(f"ファイル移動成功: {filename} -> {dest_folder}")
         if refresh:
             refresh_ui(DEFOLDER)
+    except FileNotFoundError as e:
+        logger.error(f"ファイルが見つかりません: {file_path}")
+        messagebox.showerror("エラー", f"ファイルが見つかりません: {filename}")
+    except PermissionError as e:
+        logger.error(f"ファイル移動: 権限がありません: {file_path}")
+        messagebox.showerror("エラー", f"ファイルを移動する権限がありません: {filename}")
     except Exception as e:
+        logger.error(f"ファイル移動エラー: {file_path} -> {dest_folder}", exc_info=True)
         messagebox.showerror("失敗", f"移動中にエラーが起きたのじゃ: {e}")
 
 def rebuild_move_area():
-    """移動先エリアを数に合わせて作り直すのじゃ。のじゃ。"""
+    """移動先エリアを数に合わせて作り直すのじゃ。のじゃ。
+    
+    config_defaults.py の計算関数を使用してグリッドレイアウトを決定します。
+    """
     global move_labels, move_text_vars
     # 既存のラベルを掃除
     for lbl in move_labels: lbl.destroy()
     move_labels.clear()
     move_text_vars.clear()
 
-    # 最大12個。列数は3列を基本にするのじゃ
-    cols = 3 if move_dest_count > 4 else 2
-    if move_dest_count == 2: cols = 2
+    move_dest_count = app_state.move_dest_count
+    cols = get_move_grid_columns(move_dest_count)
 
     for i in range(move_dest_count):
         tv = tk.StringVar(koRoot)
         # 背景色を交互に変えて視認性を上げるのじゃ
-        bg_color = "#e0ffe0" if (i % 2 == 0) else "#f0ffe0"
+        bg_color = COLOR_MOVE_BG_1 if (i % 2 == 0) else COLOR_MOVE_BG_2
         # 12個の時は少しフォントを小さくするのじゃ
         f_size = 8 if move_dest_count > 8 else 9
         
@@ -629,23 +932,22 @@ def rebuild_move_area():
         def make_drop_func(idx):
             def drop_handler(event):
                 try:
-                    # 複数ファイルのパース処理（Tkinterのsplitlistを使うと波括弧なども正しく捌けるのじゃ）
+                    # 複数ファイルのパース処理
                     files = koRoot.tk.splitlist(event.data)
                     count = 0
                     for f in files:
                         p = os.path.normpath(f)
                         if os.path.isfile(p):
-                            # ループ中はrefresh=Falseにして高速化するのじゃ
-                            execute_move(p, move_dest_list[idx], refresh=False)
+                            execute_move(p, app_state.move_dest_list[idx], refresh=False)
                             count += 1
                         elif os.path.isdir(p):
                              messagebox.showwarning("注意", f"フォルダは移動できないのじゃ: {p}")
                     
                     if count > 0:
                         refresh_ui(DEFOLDER)
-                        print(f"[BATCH MOVE] 合計 {count} 個のファイルを移動して画面を更新したのじゃ。")
+                        logger.info(f"[BATCH MOVE] {count}個のファイルを移動して画面を更新")
                 except Exception as e:
-                    print(f"ドロップ処理エラー: {e}")
+                    logger.error(f"ドロップ処理エラー: {e}", exc_info=True)
             return drop_handler
         
         l.dnd_bind("<<Drop>>", make_drop_func(i))

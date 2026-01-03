@@ -10,6 +10,11 @@ import os
 import threading
 import sys
 import itertools
+from collections import OrderedDict
+from .GazoToolsExceptions import AIModelError, ImageLoadError, VectorProcessingError
+from .GazoToolsLogger import LoggerManager
+
+logger = LoggerManager.get_logger(__name__)
 
 class VectorEngine:
     """MobileNetV3を使用して画像のベクトル化を行うクラスなのじゃ。"""
@@ -19,93 +24,309 @@ class VectorEngine:
     @classmethod
     def get_instance(cls):
         """インスタンスを取得する（なければ作る）のじゃ。"""
-        # print("DEBUG: get_instance() が呼ばれたのじゃ。")
         with cls._lock:
             if cls._instance is None:
-                # print("DEBUG: 新しいインスタンスを作成するのじゃ。")
                 cls._instance = cls()
-            else:
-                # print("DEBUG: 既存のインスタンスを返すのじゃ。")
-                pass
         return cls._instance
 
-    def __init__(self):
-        """モデルを読み込むのじゃ。初回はダウンロードが走るかもしれないのじゃ。"""
-        print("AIモデル(MobileNetV3)の準備手順を開始するのじゃ...")
-        print("  - 手順1: モデルウェイトの設定を読み込むのじゃ。")
+    def __init__(self, debug_mode=False, cache_size=256):
+        """モデルを読み込むのじゃ。初回はダウンロードが走るかもしれないのじゃ。
+        
+        Args:
+            debug_mode (bool): デバッグログを出力するか
+            cache_size (int): ベクトルキャッシュの最大サイズ（LRU）
+        """
+        self.debug_mode = debug_mode
+        self.cache_size = cache_size
+        self.vector_cache = OrderedDict()  # LRUキャッシュ
+        logger.info("AIモデル(MobileNetV3)の準備手順を開始するのじゃ...")
+        
         try:
+            if self.debug_mode:
+                logger.debug("手順1: モデルウェイトの設定を読み込むのじゃ。")
+            
             # 軽量なMobileNetV3 Smallを使用
             self.weights = models.MobileNet_V3_Small_Weights.DEFAULT
             
-            print("  - 手順2: MobileNetV3_Smallモデルを構築するのじゃ。")
+            if self.debug_mode:
+                logger.debug("手順2: MobileNetV3_Smallモデルを構築するのじゃ。")
             self.model = models.mobilenet_v3_small(weights=self.weights)
             
-            print("  - 手順3: 特徴抽出用にモデルを改造するのじゃ (Classifier -> Identity)。")
+            if self.debug_mode:
+                logger.debug("手順3: 特徴抽出用にモデルを改造するのじゃ。")
             self.model.classifier = torch.nn.Identity()
             
-            print("  - 手順4: 推論モード (eval) に切り替えるのじゃ。")
+            if self.debug_mode:
+                logger.debug("手順4: 推論モード (eval) に切り替えるのじゃ。")
             self.model.eval() 
             
-            print("  - 手順5: 前処理用変換(Transforms)を用意するのじゃ。")
+            # GPU利用可能なら使用
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.model.to(self.device)
+            if self.debug_mode:
+                logger.debug(f"使用デバイス: {self.device}")
+            
+            if self.debug_mode:
+                logger.debug("手順5: 前処理用変換(Transforms)を用意するのじゃ。")
             self.preprocess = self.weights.transforms()
             
+            # メモリ最適化：勾配計算を無効化
+            torch.set_grad_enabled(False)
+            
             self.available = True
-            print("AIモデルの準備が全て正常に完了したのじゃ！")
+            logger.info("AIモデルの準備が全て正常に完了したのじゃ！")
         except Exception as e:
-            print(f"AIモデルの読み込み手順でエラーが発生したのじゃ...: {e}")
-            self.model = None
-            self.preprocess = None
-            self.available = False
+            logger.error(f"AIモデルの読み込み手順でエラーが発生したのじゃ: {e}", exc_info=True)
+            raise AIModelError(f"Failed to initialize AI model: {e}") from e
 
     def check_available(self):
         return self.available
 
+    def _get_cache_key(self, image_path):
+        """ファイルパスとサイズをキーにする（変更検出用）"""
+        try:
+            stat_info = os.stat(image_path)
+            return f"{os.path.abspath(image_path)}_{stat_info.st_mtime}_{stat_info.st_size}"
+        except:
+            return os.path.abspath(image_path)
+
+    def _get_from_cache(self, image_path):
+        """キャッシュからベクトルを取得"""
+        key = self._get_cache_key(image_path)
+        if key in self.vector_cache:
+            # LRU更新：アクセスした項目を最後に移動
+            self.vector_cache.move_to_end(key)
+            if self.debug_mode:
+                logger.debug(f"キャッシュヒット: {os.path.basename(image_path)}")
+            return self.vector_cache[key]
+        return None
+
+    def _add_to_cache(self, image_path, vector):
+        """ベクトルをキャッシュに追加"""
+        key = self._get_cache_key(image_path)
+        self.vector_cache[key] = vector
+        
+        # キャッシュサイズを制限（LRU削除）
+        if len(self.vector_cache) > self.cache_size:
+            removed_key, removed_val = self.vector_cache.popitem(last=False)
+            if self.debug_mode:
+                logger.debug(f"キャッシュ削除（LRU）: {len(self.vector_cache)}/{self.cache_size}")
+
+    def clear_cache(self):
+        """キャッシュをクリア（メモリ節約時に呼び出し）"""
+        self.vector_cache.clear()
+        logger.info(f"ベクトルキャッシュをクリアしたのじゃ")
+
+    def get_cache_stats(self):
+        """キャッシュ統計情報を返す"""
+        return {
+            "size": len(self.vector_cache),
+            "max_size": self.cache_size
+        }
+
     def get_image_feature(self, image_path):
-        """画像パスを受け取って、特徴量ベクトル（リスト）を返すのじゃ。"""
-        print(f"画像処理開始: {os.path.basename(image_path)}")
+        """画像パスを受け取って、特徴量ベクトル（リスト）を返すのじゃ。
+        
+        キャッシュを確認して、必要に応じて推論を実行する。
+        """
         if not self.available:
-            print("  -> エラー: AIモデルが利用可能ではないのじゃ。")
-            return None
+            logger.error("AIモデルが利用可能ではありません")
+            raise AIModelError("AI model is not available")
+
+        # キャッシュから取得を試みる
+        cached_vec = self._get_from_cache(image_path)
+        if cached_vec is not None:
+            return cached_vec
 
         try:
-            print("  -> 手順1: 画像ファイルを開くのじゃ。")
+            if self.debug_mode:
+                logger.debug(f"画像ファイルを開くのじゃ: {os.path.basename(image_path)}")
+            
             image = Image.open(image_path).convert("RGB")
             
-            print("  -> 手順2: 画像の前処理（リサイズ・正規化）を行うのじゃ。")
+            if self.debug_mode:
+                logger.debug(f"画像の前処理を行うのじゃ: {image.size}")
+            
             input_tensor = self.preprocess(image)
-            input_batch = input_tensor.unsqueeze(0) # バッチ次元を追加
+            input_batch = input_tensor.unsqueeze(0).to(self.device)
 
-            print("  -> 手順3: AIモデルで推論を実行するのじゃ。")
+            if self.debug_mode:
+                logger.debug("AIモデルで推論を実行するのじゃ。")
+            
             with torch.no_grad():
                 output = self.model(input_batch)
             
-            print("  -> 手順4: 結果を1次元ベクトルに変換するのじゃ。")
             feature_vector = output[0]
             
-            print("  -> 手順5: ベクトルの正規化 (L2 norm) を行うのじゃ。")
+            if self.debug_mode:
+                logger.debug("ベクトルの正規化 (L2 norm) を行うのじゃ。")
+            
             norm = feature_vector.norm(p=2)
             if norm > 0:
                 feature_vector = feature_vector / norm
             
-            print(f"画像処理完了: {len(feature_vector.tolist())}次元のベクトルを得たのじゃ。")
-            return feature_vector.tolist()
+            vec_list = feature_vector.tolist()
+            
+            # キャッシュに保存
+            self._add_to_cache(image_path, vec_list)
+            
+            if self.debug_mode:
+                logger.debug(f"画像処理完了: {len(vec_list)}次元のベクトルを取得")
+            return vec_list
+            
+        except FileNotFoundError as e:
+            logger.error(f"画像ファイルが見つかりません: {image_path}", exc_info=True)
+            raise ImageLoadError(f"Image file not found: {image_path}") from e
+        except IOError as e:
+            logger.error(f"画像ファイル読み込みエラー: {image_path}", exc_info=True)
+            raise ImageLoadError(f"Cannot read image file: {image_path}") from e
         except Exception as e:
-            print(f"ベクトル化処理中に例外が発生したのじゃ({os.path.basename(image_path)}): {e}")
-            return None
+            logger.error(f"ベクトル化処理中に予期しないエラー: {os.path.basename(image_path)}", exc_info=True)
+            raise VectorProcessingError(f"Failed to vectorize image: {e}") from e
+
+    def get_image_features_batch(self, image_paths):
+        """複数の画像パスを受け取って、ベクトルのリストを返すのじゃ。
+        
+        バッチ処理により、単一処理より高速に複数画像を処理できるのじゃ。
+        
+        Args:
+            image_paths (list): 画像ファイルパスのリスト
+            
+        Returns:
+            list: (画像パス, ベクトル) のタプルリスト
+        """
+        if not self.available:
+            logger.error("AIモデルが利用可能ではありません")
+            raise AIModelError("AI model is not available")
+        
+        if not image_paths:
+            logger.warning("バッチ処理：画像パスリストが空です")
+            return []
+        
+        results = []
+        batch_size = 8  # GPU/CPU負荷を考慮したバッチサイズ
+        
+        try:
+            logger.info(f"バッチ処理開始: {len(image_paths)}個の画像を{batch_size}個ずつ処理するのじゃ")
+            
+            # 画像をバッチで処理
+            for batch_start in range(0, len(image_paths), batch_size):
+                batch_end = min(batch_start + batch_size, len(image_paths))
+                batch_paths = image_paths[batch_start:batch_end]
+                
+                if self.debug_mode:
+                    logger.debug(f"バッチ {batch_start//batch_size + 1}: {len(batch_paths)}個の画像を処理中")
+                
+                # バッチ内の画像を読み込む
+                images = []
+                valid_paths = []
+                
+                for path in batch_paths:
+                    try:
+                        image = Image.open(path).convert("RGB")
+                        images.append(image)
+                        valid_paths.append(path)
+                    except Exception as e:
+                        logger.warning(f"画像読み込み失敗（スキップ）: {path} - {e}")
+                        continue
+                
+                if not images:
+                    continue
+                
+                # 前処理（画像をテンソルに変換）
+                input_tensors = [self.preprocess(img) for img in images]
+                input_batch = torch.stack(input_tensors).to(self.device)
+                
+                # バッチ推論
+                with torch.no_grad():
+                    outputs = self.model(input_batch)
+                
+                # L2正規化と結果の収集
+                for i, (path, output) in enumerate(zip(valid_paths, outputs)):
+                    feature_vector = output
+                    norm = feature_vector.norm(p=2)
+                    if norm > 0:
+                        feature_vector = feature_vector / norm
+                    
+                    vec_list = feature_vector.tolist()
+                    results.append((path, vec_list))
+                    
+                    if self.debug_mode:
+                        logger.debug(f"処理完了: {os.path.basename(path)} ({len(vec_list)}次元)")
+            
+            logger.info(f"バッチ処理完了: {len(results)}個の画像ベクトルを生成したのじゃ")
+            return results
+            
+        except Exception as e:
+            logger.error(f"バッチ処理中にエラー: {e}", exc_info=True)
+            raise VectorProcessingError(f"Failed to batch process images: {e}") from e
 
     def compare_features(self, vec1, vec2):
         """2つのベクトルのコサイン類似度（0.0〜1.0）を計算するのじゃ。"""
-        print("ベクトル比較を開始するのじゃ。")
-        if not vec1 or not vec2:
-            print("  -> エラー: 比較するベクトルが空なのじゃ。")
-            return 0.0
+        try:
+            if not vec1 or not vec2:
+                logger.warning("比較するベクトルが空です")
+                raise VectorProcessingError("Cannot compare empty vectors")
+            
+            # torcで計算するのじゃ
+            t1 = torch.tensor(vec1)
+            t2 = torch.tensor(vec2)
+            score = torch.nn.functional.cosine_similarity(t1.unsqueeze(0), t2.unsqueeze(0)).item()
+            
+            if self.debug_mode:
+                logger.debug(f"ベクトル比較完了: 類似度スコア = {score:.4f}")
+            return score
+        except VectorProcessingError:
+            raise
+        except Exception as e:
+            logger.error(f"ベクトル比較中にエラー: {e}", exc_info=True)
+            raise VectorProcessingError(f"Failed to compare features: {e}") from e
+
+    def compare_features_batch(self, query_vec, candidate_vecs, threshold=0.5):
+        """クエリベクトルと複数の候補ベクトルを比較し、閾値以上のスコアを返すのじゃ。
         
-        # numpyを使わずにtorchで計算するのじゃ
-        t1 = torch.tensor(vec1)
-        t2 = torch.tensor(vec2)
-        score = torch.nn.functional.cosine_similarity(t1.unsqueeze(0), t2.unsqueeze(0)).item()
-        print(f"  -> 比較完了: 類似度スコア = {score:.4f}")
-        return score
+        バッチ比較により、大量の類似度計算を高速に処理できるのじゃ。
+        
+        Args:
+            query_vec (list): クエリベクトル（特徴量）
+            candidate_vecs (list): 候補ベクトルのリスト
+            threshold (float): スコア閾値（0.0-1.0）。この以上のマッチを返す。
+            
+        Returns:
+            list: (インデックス, スコア) のタプルリスト。スコア順（降順）に返す。
+        """
+        try:
+            if not query_vec or not candidate_vecs:
+                logger.warning("比較用ベクトルが不足しています")
+                return []
+            
+            t_query = torch.tensor(query_vec)
+            t_candidates = torch.stack([torch.tensor(v) for v in candidate_vecs])
+            
+            # バッチコサイン類似度計算
+            scores = torch.nn.functional.cosine_similarity(
+                t_query.unsqueeze(0),
+                t_candidates
+            )
+            
+            # 閾値以上のマッチを抽出＆ソート
+            matches = []
+            for idx, score in enumerate(scores):
+                score_val = score.item()
+                if score_val >= threshold:
+                    matches.append((idx, score_val))
+            
+            # スコア降順でソート
+            matches.sort(key=lambda x: x[1], reverse=True)
+            
+            if self.debug_mode:
+                logger.debug(f"バッチ比較完了: {len(candidate_vecs)}個中{len(matches)}個がマッチ（閾値={threshold}）")
+            
+            return matches
+            
+        except Exception as e:
+            logger.error(f"バッチ比較処理中にエラー: {e}", exc_info=True)
+            raise VectorProcessingError(f"Failed to batch compare features: {e}") from e
 
 if __name__ == "__main__":
     # メイン実行ブロックなのじゃ
