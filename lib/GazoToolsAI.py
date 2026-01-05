@@ -13,6 +13,11 @@ import itertools
 from collections import OrderedDict
 from .GazoToolsExceptions import AIModelError, ImageLoadError, VectorProcessingError
 from .GazoToolsLogger import LoggerManager
+import time
+from lib.GazoToolsData import load_vectors, save_vectors, calculate_file_hash
+from lib.GazoToolsLib import GetGazoFiles
+from lib.GazoToolsExceptions import FileHashError
+
 
 logger = LoggerManager.get_logger(__name__)
 
@@ -327,6 +332,115 @@ class VectorEngine:
         except Exception as e:
             logger.error(f"バッチ比較処理中にエラー: {e}", exc_info=True)
             raise VectorProcessingError(f"Failed to batch compare features: {e}") from e
+
+class VectorBatchProcessor(threading.Thread):
+    """バックグラウンドでベクトル化を行うスレッドクラスなのじゃ。"""
+    def __init__(self, folder_path, callback_progress=None, callback_finish=None):
+        super().__init__()
+        self.folder_path = folder_path
+        self.callback_progress = callback_progress
+        self.callback_finish = callback_finish
+        self.daemon = True # メイン終了時に一緒に終わるようにするのじゃ
+        self.running = True
+
+    def run(self):
+        try:
+            engine = VectorEngine.get_instance()
+            if not engine.check_available():
+                logger.error("AIモデルが利用できません")
+                if self.callback_finish: 
+                    self.callback_finish("AIモデルが利用できないのじゃ")
+                return
+
+            all_items = os.listdir(self.folder_path)
+            files = GetGazoFiles(all_items, self.folder_path)
+            total = len(files)
+            
+            try:
+                vectors = load_vectors()
+            except VectorProcessingError as e:
+                logger.warning(f"既存ベクトルデータの読み込み失敗、新規作成します: {e}")
+                vectors = {}
+            
+            updated_count = 0
+            failed_count = 0
+            
+            logger.info(f"ベクトル更新開始: {total}ファイルをチェック")
+            
+            start_time = time.time()
+            last_log_time = start_time
+            
+            for i, filename in enumerate(files):
+                if not self.running: 
+                    logger.info("ベクトル化処理が中止されました")
+                    break
+                
+                # タイムアウトチェック (10分)
+                current_time = time.time()
+                elapsed = current_time - start_time
+                if elapsed > 600:
+                    logger.warning(f"ベクトル化処理がタイムアウト (10分経過)")
+                    if self.callback_finish:
+                        self.callback_finish("タイムアウトにより停止したのじゃ")
+                    break
+
+                # 経過表示 (1分ごと)
+                if current_time - last_log_time >= 60:
+                    logger.info(f"ベクトル化処理中... {i}/{total} ({int(elapsed)}秒経過)")
+                    last_log_time = current_time
+
+                full_path = os.path.join(self.folder_path, filename)
+                
+                try:
+                    file_hash = calculate_file_hash(full_path)
+                except FileHashError as e:
+                    logger.warning(f"ハッシュ計算失敗: {filename}")
+                    failed_count += 1
+                    continue
+                
+                # まだベクトルがない、あるいはハッシュが変わった場合のみ計算
+                if file_hash and file_hash not in vectors:
+                    try:
+                        vec = engine.get_image_feature(full_path)
+                        if vec:
+                            vectors[file_hash] = vec
+                            updated_count += 1
+                    except Exception as e:
+                        logger.warning(f"ベクトル化失敗: {filename} - {e}")
+                        failed_count += 1
+                
+                if self.callback_progress:
+                    self.callback_progress(i + 1, total, filename)
+                
+                # 少し休みを入れてCPUを占有しすぎないようにするのじゃ
+                time.sleep(0.01)
+
+            # ベクトルを保存
+            try:
+                if updated_count > 0:
+                    save_vectors(vectors)
+            except VectorProcessingError as e:
+                logger.error(f"ベクトルデータ保存失敗: {e}")
+                if self.callback_finish:
+                    self.callback_finish(f"ベクトル保存エラー: {e}")
+                return
+                
+            if self.callback_finish:
+                message = f"完了！ {updated_count}件のベクトルを新規追加したのじゃ。"
+                if failed_count > 0:
+                    message += f"({failed_count}件失敗)"
+                self.callback_finish(message)
+            
+            logger.info(f"ベクトル更新完了: 追加{updated_count}件、失敗{failed_count}件")
+            
+        except Exception as e:
+            logger.error(f"ベクトル化スレッド処理中に予期しないエラー: {e}", exc_info=True)
+            if self.callback_finish:
+                self.callback_finish(f"予期しないエラーが発生したのじゃ: {e}")
+
+    def stop(self):
+        logger.info("ベクトル化処理停止要求")
+        self.running = False
 
 if __name__ == "__main__":
     # メイン実行ブロックなのじゃ
