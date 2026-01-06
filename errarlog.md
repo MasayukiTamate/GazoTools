@@ -54,3 +54,11 @@
 - **Fix**: Moved the assignment of `_image_hash` (and `_image_path`) to the beginning of the window setup process, before the vector display logic is executed.
 - **Lesson**: Be careful with the order of operations when adding new UI elements that depend on attributes assigned later in the function.
 "じっこうちゅう～だよ"
+
+## 2026-01-07: Vector Interpretation Failure (Missing Import)
+- **Error**: `NameError: name 'get_interpreter' is not defined` in `GazoToolsLogic.py`.
+- **Cause**: Refactoring Oversight. During the refactoring of `GazoToolsLogic.py` imports, the `get_interpreter` function from `lib/GazoToolsVectorInterpreter` was accidentally removed from the import list.
+- **Fix**: Added `from lib.GazoToolsVectorInterpreter import get_interpreter` to `GazoToolsLogic.py`.
+- **Lesson**: When cleaning up imports, carefully check usage of each imported name, or use an IDE/Linter that highlights undefined variables *before* running.
+"ぶんせきちゅう～むずかし～よ～なのじゃ"
+

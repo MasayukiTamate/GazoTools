@@ -152,8 +152,12 @@ def get_default_config():
             "random_pos": False,
             "topmost": True,
             "show_folder": True,
-            "show_file": True,
-            "show_rating_window": True,          # 評価ウィンドウ表示
+            "rating_window_geometry": None,  # 評価ウィンドウの位置とサイズ
+            "show_rating_window": True,     # 評価ウィンドウを表示するかどうか
+            "vector_window_geometry": None,  # ベクトルウィンドウの位置とサイズ
+            "show_vector_window": False,     # ベクトルウィンドウを表示するかどうか
+            
+            # --- ベクトル検索設定 ---
             "show_info_window": False,           # 情報ウィンドウ表示（デフォルトOFF）
             "ss_mode": False,
             "ss_interval": DEFAULT_SS_INTERVAL,

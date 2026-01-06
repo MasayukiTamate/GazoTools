@@ -1,78 +1,53 @@
-# ベクトル表示機能の分析報告
+# コード分析レポート (Code Analysis Report)
 
-GazoToolsの「ベクトル表示機能」について、信頼性と正確性の観点から分析を行いました。
-結論として、**致命的なエラー（クラッシュ）は発生しませんが、論理的な不整合により一部の機能が動作していない**可能性が高いです。
+## 概要 (Overview)
+本レポートは、`GazoTools` プロジェクトの現状のコードベースを分析し、最近の変更点、改善された箇所、および残存する課題についてまとめたものです。
 
-## 1. 検出された問題点
+## 最近の変更と改善 (Recent Changes & Improvements)
 
-### A. ベクトル次元数の不一致 (High Impact)
-*   **現状**: `GazoToolsAI.py` のAIモデル (`mobilenet_v3_small`) は、Classifierを `Identity` に置き換えているため、出力次元数は **576** となります。
-*   **期待**: `lib/GazoToolsVectorInterpreter.py` は、ベクトルが **1024次元** であることを前提にマッピングを行っています。
-*   **影響**:
-    *   ベクトルデータの 0〜575 次元目までは解釈されます（Color, Edge, Textureの一部）。
-    *   **Textureの後半 (576〜751)**、**Shape (751〜921)**、**Semantic (921〜1024)** カテゴリは、**永遠に表示されません**。
-    *   ユーザーには「形状」や「意味」に関する特徴が表示されない状態です。
+### 1. マージ競合と循環参照の解消
+*   **事象**: `git pull` による `GazoToolsApp.py` と `GazoToolsLogic.py` のマージ競合、およびその後の `VectorEngine` インポートによる循環参照エラー。
+*   **対応**:
+    *   手動でのコンフリクトマーカー除去とロジックの復元。
+    *   `lib/GazoToolsData.py` における `GazoToolsAI` のインポートをトップレベルから `GetNextAIImage` 関数内に移動し、import時の循環依存を解決。
 
-### B. エラーハンドリング (Good)
-*   `VectorInterpreter` は、次元インデックスが定義範囲外の場合に `"unknown"` カテゴリとして処理する安全策が取られています。
-*   そのため、この次元数不一致によってアプリがクラッシュすることはありません。
-*   `GazoToolsLogic.py` のUI表示部分も `try-except` で保護されており、表示時の例外で画像ウィンドウが落ちることはありません。
+### 2. ロジックの重複排除と集約 (DRY原則)
+*   **事象**: `GazoToolsLogic.py` が `lib/GazoToolsData.py` と同等の機能（`load_config`, `save_tags` など）を独自に実装しており、一部の機能（`assigned_rating`対応など）で実装ごとの差異（スプリットブレイン）が発生していた。
+*   **対応**:
+    *   `GazoToolsLogic.py` 内の重複関数定義を削除。
+    *   `lib/GazoToolsData.py` に最新のロジック（`assigned_rating` 対応版）を統合。
+    *   `GazoToolsLogic.py` から `lib/GazoToolsData.py` をインポートして利用するように変更。これにより、データアクセスのロジックが一元化されました。
 
-## 2. 改善提案
+### 3. 不足関数の実装
+*   **事象**: `blend_color` 関数や一部のUIコンポーネント（`SplashWindow`, `SimilarityMoveDialog`）がインポートできず `NameError` が発生。
+*   **対応**:
+    *   `lib/GazoToolsBasicLib.py` に `blend_color` を実装。
+    *   `GazoToolsApp.py` で適切なモジュール（`lib.GazoToolsGUI`, `lib.GazoToolsBasicLib`）からのインポートを追加。
 
-### 修正案: AIモデル側の調整
-AIモデルの出力を1024次元にするように変更します。
-`MobileNetV3` の Classifier の *最後の層だけ* を削除し、1024次元の中間層出力を取得するようにします。
+## アプリケーション構造 (Application Structure)
 
-```python
-# GazoToolsAI.py の修正案
-# 現在: self.model.classifier = torch.nn.Identity()
-# 修正: 最後のLinear(1024->1000)だけを削除
-self.model.classifier = torch.nn.Sequential(
-    self.model.classifier[0], # Linear(576->1024)
-    self.model.classifier[1], # Hardswish
-    self.model.classifier[2], # Dropout
-    torch.nn.Identity()       # Linear(1024->1000) removed
-)
-```
-※ ただし、これにより既存の `vectors.pkl` (576次元) と互換性がなくなるため、ベクトルデータの再生成が必要になります。
+### モジュール構成
+*   **GazoToolsApp.py**: エントリーポイント。メインウィンドウ設定、イベントバインディング、UI構築を担当。
+*   **GazoToolsLogic.py**: 主なビジネスロジック。ウィンドウレイアウト計算 (`calculate_window_layout`)、画像制御 (`GazoPicture`) などを担当。現在は `lib` 以下のモジュールへの依存度を高め、コード量が削減傾向にある。
+*   **lib/**: 機能ごとに分割されたライブラリ群。
+    *   `GazoToolsData.py`: 設定、タグ、評価、ベクトルデータの読み書きおよび `HakoData`（データ保持）。
+    *   `GazoToolsAI.py`: AIモデル (`VectorEngine`) とバックグラウンド処理 (`VectorBatchProcessor`)。
+    *   `GazoToolsGUI.py`: 再利用可能なUIコンポーネント (`SplashWindow`, `SimilarityMoveDialog`, `ScrollableFrame`)。
+    *   `GazoToolsBasicLib.py`: 基本的なユーティリティ関数。
 
-## 3. 結論
-*   **クラッシュのリスク**: 低い（安全策が機能している）。
-*   **機能の完全性**: 低い（Shape/Semanticカテゴリが機能していない）。
-*   **推奨アクション**:
-    1.  まずユーザーにこの不整合を報告する。
-    2.  既存のベクトルデータを破棄してモデルを1024次元出力に修正するか、Interpreterのマッピングを576次元に合わせて作り直すかを検討する。
+## 残存する課題と推奨事項 (Remaining Issues & Recommendations)
 
-## 4. 原因と再発防止策 (Root Cause Analysis)
+### 1. 巨大なクラスとファイル (God Class/File)
+*   **GazoToolsApp.py**: 依然としてUI構築ロジックが集中しており、可読性が低い。特に `setup_main_window` やドラッグ＆ドロップ関連の処理が長い。
+*   **改善案**: UIパーツごとのクラス化を進め、`lib/GazoToolsGUI.py` 等へさらに委譲する。
 
-ユーザーからの要望に基づき、なぜこのような不整合が発生したのか、そしてどうすれば防げるのかを深掘りしました。
+### 2. グローバル状態依存
+*   **GazoToolsLogic.py**: `GazoPicture` クラスなどでクラス変数 (`_info_window` 等) やグローバルな状態に依存している箇所がある。
+*   **改善案**: 状態管理を `AppState` クラスにさらに集約し、依存関係を明確にする。
 
-### A. なぜ起きたのか？ (The "Why")
+### 3. テストカバレッジ
+*   **現状**: 手動テストと起動確認が主である。
+*   **改善案**: 特に `lib` 以下の純粋な関数群（データ操作、計算ロジック）に対して単体テストを追加し、リファクタリング時の安全性を高める。
 
-1.  **モデル構造の誤解 (Assumption Mismatch)**:
-    *   **MobileNetV3 Small (オリジナル)**: 最終段の Classifier 部分で `576次元 -> 1024次元 -> 1000クラス(分類)` という変換を行っています。
-    *   **GazoToolsAIの実装**: `self.model.classifier = torch.nn.Identity()` としたことで、Classifier全体をごっそり削除してしまいました。その結果、1024次元への拡張が行われる前の **576次元** が直接出力されるようになりました。
-    *   **Interpreterの実装**: 「MobileNetV3の特徴量は1024次元である（Classifierの中間層を使う）」という前提、あるいは「Largeモデル（960->1280次元など）と混同した」前提で、1024次元分のハードコードされたマッピングを作成してしまいました。
-
-2.  **定数のハードコード (Hardcoding)**:
-    *   AI生成側では自動(`Identity`)、解釈側では手動(`FEATURE_MAPPING`)で次元数を扱っており、**「ベクトル次元数」という重要な共通仕様が一箇所で定義されていませんでした**。
-
-3.  **連携テストの欠如 (Missing Integration Test)**:
-    *   「画像を入れたらエラーなくベクトルが出るか」のテストと、「ベクトルを入れたら解釈できるか」のテストは個別に機能していましたが、**「実際のモデルが出したベクトルを、解釈機にかけてみる」** という結合部分の検証が不足していました。
-
-### B. どうすれば再発しないか？ (Prevention)
-
-今後、同様の不具合を防ぐための具体的な防止策です。
-
-1.  **Single Source of Truth (信頼できる唯一の情報源)**:
-    *   `VECTOR_DIM_SIZE = 1024` のような定数を設定ファイル (`config_defaults.py` 等) に定義し、AIモデルの構築時とInterpreterの初期化時の**両方でこの定数を参照する**ようにします。
-    *   AIモデル側で出力サイズが定数と一致しない場合は、起動時にエラーを出すようにします。
-
-2.  **Runtime Validation (実行時チェック)**:
-    *   `VectorInterpreter` がベクトルを受け取った際、期待する次元数（1024）と実際のベクトルの長さ（len(vector)）を比較し、**一致しない場合は警告ログを出し（またはエラーにし）、マッピング処理を中断する** ガード処理を追加します。
-
-3.  **自動化された結合テスト**:
-    *   開発プロセスにおいて、ダミーデータではなく**「実際にロードしたモデル」**を通して得られたベクトルを、Interpreterに渡すテストコードを作成・実行します。これにより、仕様のドリフト（食い違い）を即座に検知できます。
-
-分析は以上です。
+## 結論 (Conclusion)
+今回の改修により、致命的な起動エラーとマージ競合は解消され、コードの重複も削減されました。特にデータアクセス層の一元化は保守性向上に大きく寄与します。今後はUIロジックの分離とテストの拡充が次のステップとなります。

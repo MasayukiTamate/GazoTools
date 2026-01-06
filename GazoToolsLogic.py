@@ -15,23 +15,20 @@ import math
 import ctypes
 from ctypes import wintypes
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
-from lib.GazoToolsAI import VectorEngine
-from lib.GazoToolsVectorInterpreter import get_interpreter
-from lib.GazoToolsExceptions import (
-    ConfigError, ImageLoadError, FileHashError, TagManagementError,
-    VectorProcessingError, FileOperationError, FolderAccessError
-)
-from lib.GazoToolsLogger import LoggerManager
-
-# ロギング設定
-logger = LoggerManager.get_logger(__name__)
-
-# Data access functions (re-exported for compatibility if needed)
 from lib.GazoToolsData import (
     load_config, save_config, calculate_file_hash,
     load_tags, save_tags, load_ratings, save_ratings,
-    load_vectors, save_vectors
+    load_vectors, save_vectors, HakoData
 )
+from lib.GazoToolsAI import VectorEngine, VectorBatchProcessor
+from lib.GazoToolsState import get_app_state
+from lib.GazoToolsVectorInterpreter import get_interpreter
+
+# ロギング設定 (循環参照回避のためここで行わない場合もあるが、Loggerは一般的に安全)
+from lib.GazoToolsLogger import LoggerManager
+logger = LoggerManager.get_logger(__name__)
+
+app_state = get_app_state()
 
 from lib.config_defaults import (
     calculate_folder_window_width, calculate_folder_window_height,
@@ -54,489 +51,34 @@ def calculate_window_layout(root_x, root_y, root_w, screen_w, folders, files, cu
         current_folder_name: カレントフォルダ名
         
     Returns:
-        dict: 設定辞書
-        
-    Raises:
-        ConfigError: 設定ファイルの読み込み失敗時
+        tuple: (folder_win_geometry, file_win_geometry)
+        geometry文字列 ("WxH+X+Y") を返すのじゃ。
     """
-    config = get_default_config()
+    f_count = len(folders) + 1
+    current_base = os.path.basename(current_folder_name) or current_folder_name
     
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                config["last_folder"] = data.get("last_folder", os.getcwd())
-                config["geometries"] = data.get("geometries", {})
-                saved_settings = data.get("settings", {})
-                config["settings"].update(saved_settings)
-                
-                # move_dest_list の長さを MOVE_DESTINATION_SLOTS に強制するのじゃ（IndexError対策）
-                cur_list = config["settings"].get("move_dest_list", [])
-                if len(cur_list) < MOVE_DESTINATION_SLOTS:
-                    config["settings"]["move_dest_list"] = (cur_list + [""] * MOVE_DESTINATION_SLOTS)[:MOVE_DESTINATION_SLOTS]
-
-                if not os.path.exists(config["last_folder"]):
-                    config["last_folder"] = os.getcwd()
-        except json.JSONDecodeError as e:
-            logger.error(f"設定ファイルのJSON解析に失敗: {CONFIG_FILE}", exc_info=True)
-            raise ConfigError(f"Invalid JSON in config file: {e}") from e
-        except IOError as e:
-            logger.error(f"設定ファイルの読み込み失敗: {CONFIG_FILE}", exc_info=True)
-            raise ConfigError(f"Cannot read config file: {e}") from e
-        except Exception as e:
-            logger.error(f"設定ファイル読み込み中に予期しないエラー: {e}", exc_info=True)
-            raise ConfigError(f"Unexpected error loading config: {e}") from e
-    return config
-
-def save_config(path, geometries=None, settings=None):
-    """設定を保存するのじゃ。のじゃ。"""
-    try:
-        prev = load_config()
-        data = {
-            "last_folder": path,
-            "geometries": geometries if geometries is not None else prev.get("geometries", {}),
-            "settings": settings if settings is not None else prev.get("settings", {})
-        }
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        logger.info(f"設定を保存しました: {path}")
-    except IOError as e:
-        logger.error(f"設定ファイルの書き込み失敗: {CONFIG_FILE}", exc_info=True)
-        raise ConfigError(f"Cannot write config file: {e}") from e
-    except Exception as e:
-        logger.error(f"設定保存中に予期しないエラー: {e}", exc_info=True)
-        raise ConfigError(f"Unexpected error saving config: {e}") from e
-
-def calculate_file_hash(filepath):
-    """ファイルのMD5ハッシュ値を計算するのじゃ。のじゃ。"""
-    hash_md5 = hashlib.md5()
-    try:
-        with open(filepath, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        logger.debug(f"ハッシュ計算完了: {os.path.basename(filepath)}")
-        return hash_md5.hexdigest()
-    except FileNotFoundError as e:
-        logger.error(f"ファイルが見つかりません: {filepath}", exc_info=True)
-        raise FileHashError(f"File not found: {filepath}") from e
-    except IOError as e:
-        logger.error(f"ファイル読み込みエラー: {filepath}", exc_info=True)
-        raise FileHashError(f"Cannot read file: {filepath}") from e
-    except Exception as e:
-        logger.error(f"ハッシュ計算中に予期しないエラー: {filepath}", exc_info=True)
-        raise FileHashError(f"Unexpected error calculating hash: {e}") from e
-
-def load_tags():
-    """タグデータと評価データを読み込むのじゃ。のじゃ。"""
-    tags = {} # key: hash, value: {tag: "...", hint: "...", rating: int or None, assigned_rating: str}
-    if os.path.exists(TAG_CSV_FILE):
-        try:
-            with open(TAG_CSV_FILE, "r", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 2:
-                        h = row[0]
-                        t = row[1]
-                        hint = row[2] if len(row) > 2 else ""
-                        rating = int(row[3]) if len(row) > 3 and row[3] else None
-                        assigned_rating = row[4] if len(row) > 4 and row[4] else None
-                        tags[h] = {"tag": t, "hint": hint, "rating": rating, "assigned_rating": assigned_rating}
-            logger.info(f"タグ・評価データを読み込みました: {len(tags)}件")
-        except IOError as e:
-            logger.error(f"タグファイル読み込みエラー: {TAG_CSV_FILE}", exc_info=True)
-            raise TagManagementError(f"Cannot read tag file: {e}") from e
-        except csv.Error as e:
-            logger.error(f"CSVファイル解析エラー: {TAG_CSV_FILE}", exc_info=True)
-            raise TagManagementError(f"Invalid CSV format in tag file: {e}") from e
-        except Exception as e:
-            logger.error(f"タグ読み込み中に予期しないエラー: {e}", exc_info=True)
-            raise TagManagementError(f"Unexpected error loading tags: {e}") from e
-    return tags
-
-def save_tags(tags):
-    """タグデータと評価データを保存するのじゃ。のじゃ。"""
-    try:
-        os.makedirs(os.path.dirname(TAG_CSV_FILE), exist_ok=True)
-        with open(TAG_CSV_FILE, "w", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            for h, data in tags.items():
-                rating = data.get("rating", "")
-                assigned_rating = data.get("assigned_rating", "")
-                writer.writerow([h, data["tag"], data["hint"], rating, assigned_rating])
-        logger.info(f"タグ・評価データを保存しました: {len(tags)}件")
-    except IOError as e:
-        logger.error(f"タグファイル書き込みエラー: {TAG_CSV_FILE}", exc_info=True)
-        raise TagManagementError(f"Cannot write tag file: {e}") from e
-
-
-def load_ratings():
-    """評価データを読み込むのじゃ。のじゃ。"""
-    ratings = {}  # key: rating_id, value: {name: "...", rating: int, linked: bool, custom_rating: int}
-    if os.path.exists(RATING_DATA_FILE):
-        try:
-            with open(RATING_DATA_FILE, "r", encoding="utf-8") as f:
-                ratings = json.load(f)
-            logger.info(f"評価データを読み込みました: {len(ratings)}件")
-        except (IOError, json.JSONDecodeError) as e:
-            logger.error(f"評価データファイル読み込みエラー: {RATING_DATA_FILE}", exc_info=True)
-            raise FileOperationError(f"Cannot read rating file: {e}") from e
-    else:
-        # 初回起動時はデフォルト評価を作成
-        ratings = get_default_ratings()
-        save_ratings(ratings)
-    return ratings
-
-
-def get_default_ratings():
-    """デフォルトの評価データを返すのじゃ。のじゃ。"""
-    return {
-        "普通": {
-            "name": "普通",
-            "rating": 3,
-            "linked": True,
-            "custom_rating": 3
-        },
-        "どうでもいい": {
-            "name": "どうでもいい",
-            "rating": 1,
-            "linked": True,
-            "custom_rating": 1
-        },
-        "最高": {
-            "name": "最高",
-            "rating": 5,
-            "linked": True,
-            "custom_rating": 5
-        },
-        "excellent": {
-            "name": "excellent",
-            "rating": 6,
-            "linked": True,
-            "custom_rating": 6
-        }
-    }
-
-
-def save_ratings(ratings):
-    """評価データを保存するのじゃ。のじゃ。"""
-    try:
-        os.makedirs(os.path.dirname(RATING_DATA_FILE), exist_ok=True)
-        with open(RATING_DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(ratings, f, ensure_ascii=False, indent=2)
-        logger.info(f"評価データを保存しました: {len(ratings)}件")
-    except IOError as e:
-        logger.error(f"評価データファイル書き込みエラー: {RATING_DATA_FILE}", exc_info=True)
-        raise FileOperationError(f"Cannot write rating file: {e}") from e
-    except Exception as e:
-        logger.error(f"タグ保存中に予期しないエラー: {e}", exc_info=True)
-        raise TagManagementError(f"Unexpected error saving tags: {e}") from e
-
-def load_vectors():
-    """ベクトルデータを読み込むのじゃ。のじゃ。"""
-    if os.path.exists(VECTOR_DATA_FILE):
-        try:
-            with open(VECTOR_DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            
-            # ベクトル次元数の検証（1024次元以外は破棄）
-            valid_data = {}
-            for k, v in data.items():
-                if len(v) == 1024:
-                    valid_data[k] = v
-                else:
-                    logger.warning(f"次元数不一致のためベクトルを破棄: {k} (len={len(v)})")
-            
-            if len(data) != len(valid_data):
-                logger.info(f"無効なベクトルを{len(data) - len(valid_data)}件破棄しました。")
-            
-            logger.info(f"ベクトルデータを読み込みました: {len(valid_data)}件")
-            return valid_data
-        except json.JSONDecodeError as e:
-            logger.error(f"ベクトルファイルのJSON解析エラー: {VECTOR_DATA_FILE}", exc_info=True)
-            raise VectorProcessingError(f"Invalid JSON in vector file: {e}") from e
-        except IOError as e:
-            logger.error(f"ベクトルファイル読み込みエラー: {VECTOR_DATA_FILE}", exc_info=True)
-            raise VectorProcessingError(f"Cannot read vector file: {e}") from e
-        except Exception as e:
-            logger.error(f"ベクトル読み込み中に予期しないエラー: {e}", exc_info=True)
-            raise VectorProcessingError(f"Unexpected error loading vectors: {e}") from e
-    return {}
-
-def save_vectors(vectors):
-    """ベクトルデータを保存するのじゃ。のじゃ。"""
-    try:
-        os.makedirs(os.path.dirname(VECTOR_DATA_FILE), exist_ok=True)
-        with open(VECTOR_DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(vectors, f)
-        logger.info(f"ベクトルデータを保存しました: {len(vectors)}件")
-    except IOError as e:
-        logger.error(f"ベクトルファイル書き込みエラー: {VECTOR_DATA_FILE}", exc_info=True)
-        raise VectorProcessingError(f"Cannot write vector file: {e}") from e
-    except Exception as e:
-        logger.error(f"ベクトル保存中に予期しないエラー: {e}", exc_info=True)
-        raise VectorProcessingError(f"Unexpected error saving vectors: {e}") from e
-
-class VectorBatchProcessor(threading.Thread):
-    """バックグラウンドでベクトル化を行うスレッドクラスなのじゃ。"""
-    def __init__(self, folder_path, callback_progress=None, callback_finish=None):
-        super().__init__()
-        self.folder_path = folder_path
-        self.callback_progress = callback_progress
-        self.callback_finish = callback_finish
-        self.daemon = True # メイン終了時に一緒に終わるようにするのじゃ
-        self.running = True
-
-    def run(self):
-        try:
-            engine = VectorEngine.get_instance()
-            if not engine.check_available():
-                logger.error("AIモデルが利用できません")
-                if self.callback_finish: 
-                    self.callback_finish("AIモデルが利用できないのじゃ")
-                return
-
-            all_items = os.listdir(self.folder_path)
-            files = GetGazoFiles(all_items, self.folder_path)
-            total = len(files)
-            
-            try:
-                vectors = load_vectors()
-            except VectorProcessingError as e:
-                logger.warning(f"既存ベクトルデータの読み込み失敗、新規作成します: {e}")
-                vectors = {}
-            
-            updated_count = 0
-            failed_count = 0
-            
-            logger.info(f"ベクトル更新開始: {total}ファイルをチェック")
-            
-            start_time = time.time()
-            last_log_time = start_time
-            
-            for i, filename in enumerate(files):
-                if not self.running: 
-                    logger.info("ベクトル化処理が中止されました")
-                    break
-                
-                # タイムアウトチェック (10分)
-                current_time = time.time()
-                elapsed = current_time - start_time
-                if elapsed > 600:
-                    logger.warning(f"ベクトル化処理がタイムアウト (10分経過)")
-                    if self.callback_finish:
-                        self.callback_finish("タイムアウトにより停止したのじゃ")
-                    break
-
-                # 経過表示 (1分ごと)
-                if current_time - last_log_time >= 60:
-                    logger.info(f"ベクトル化処理中... {i}/{total} ({int(elapsed)}秒経過)")
-                    last_log_time = current_time
-
-                full_path = os.path.join(self.folder_path, filename)
-                
-                try:
-                    file_hash = calculate_file_hash(full_path)
-                except FileHashError as e:
-                    logger.warning(f"ハッシュ計算失敗: {filename}")
-                    failed_count += 1
-                    continue
-                
-                # まだベクトルがない、あるいはハッシュが変わった場合のみ計算
-                if file_hash and file_hash not in vectors:
-                    try:
-                        vec = engine.get_image_feature(full_path)
-                        if vec:
-                            vectors[file_hash] = vec
-                            updated_count += 1
-                    except Exception as e:
-                        logger.warning(f"ベクトル化失敗: {filename} - {e}")
-                        failed_count += 1
-                
-                if self.callback_progress:
-                    self.callback_progress(i + 1, total, filename)
-                
-                # 少し休みを入れてCPUを占有しすぎないようにするのじゃ
-                time.sleep(0.01)
-
-            # ベクトルを保存
-            try:
-                if updated_count > 0:
-                    save_vectors(vectors)
-            except VectorProcessingError as e:
-                logger.error(f"ベクトルデータ保存失敗: {e}")
-                if self.callback_finish:
-                    self.callback_finish(f"ベクトル保存エラー: {e}")
-                return
-                
-            if self.callback_finish:
-                message = f"完了！ {updated_count}件のベクトルを新規追加したのじゃ。"
-                if failed_count > 0:
-                    message += f"({failed_count}件失敗)"
-                self.callback_finish(message)
-            
-            logger.info(f"ベクトル更新完了: 追加{updated_count}件、失敗{failed_count}件")
-            
-        except Exception as e:
-            logger.error(f"ベクトル化スレッド処理中に予期しないエラー: {e}", exc_info=True)
-            if self.callback_finish:
-                self.callback_finish(f"予期しないエラーが発生したのじゃ: {e}")
-
-    def stop(self):
-        logger.info("ベクトル化処理停止要求")
-        self.running = False
-
-class HakoData():
-    """画像データ保持クラスなのじゃ。のじゃ。"""
-    def __init__(self, def_folder):
-        self.StartFolder = def_folder
-        self.GazoFiles = []
-        self.vectors_cache = {}
-        self.ai_playlist = []     # AI再生用のキュー
-        self.visited_files = set() # 表示済みファイル（AIモード用）
-
-    def SetGazoFiles(self, GazoFiles, folder_path, include_subfolders=False):
-        """画像ファイルリストを設定するのじゃ。のじゃ。
+    # フォルダウィンドウ計算
+    f_names = [f"({len(files)}) [現在] {current_base}"] + [f"({len(folders)}) {f}" for f in folders]
+    max_f = max([len(f) for f in f_names]) if f_names else 5
+    w_f = calculate_folder_window_width(max_f)
+    h_f = calculate_folder_window_height(f_count)
+    x_f, y_f = root_x + root_w + WINDOW_SPACING, root_y
+    f_geo = f"{w_f}x{h_f}+{x_f}+{y_f}"
+    
+    # ファイルウィンドウ計算
+    g_count = len(files)
+    max_g = max([len(f) for f in files]) if files else 5
+    w_g = calculate_file_window_width(max_g)
+    h_g = calculate_file_window_height(g_count)
+    x_g, y_g = x_f + w_f + WINDOW_SPACING, root_y
+    
+    # 画面ハミ出しチェック
+    if x_g + w_g > screen_w:
+        x_g = max(10, root_x - w_g - WINDOW_SPACING)
         
-        Args:
-            GazoFiles: 現在のフォルダの画像ファイルリスト
-            folder_path: フォルダパス
-            include_subfolders: 子フォルダを含めるかどうか
-        """
-        self.StartFolder = folder_path
-        self.GazoFiles = GazoFiles
-        
-        # 子フォルダを含める場合は再帰的に収集
-        if include_subfolders:
-            self.GazoFiles = self._collect_all_images(folder_path)
-        
-        # フォルダが変わったらキャッシュと状態をリセット
-        self.vectors_cache = load_vectors()
-        self.ai_playlist = []
-        self.visited_files = set()
-
-    def _collect_all_images(self, base_folder):
-        """ベースフォルダとその子フォルダから全ての画像を収集するのじゃ。のじゃ。
-        
-        Args:
-            base_folder: 基準となるフォルダパス
-            
-        Returns:
-            list: ベースフォルダからの相対パスのリスト
-        """
-        all_images = []
-        
-        def collect_recursive(current_folder, base_path):
-            """再帰的に画像を収集する内部関数なのじゃ。"""
-            try:
-                items = os.listdir(current_folder)
-                folders = GetKoFolder(items, current_folder)
-                files = GetGazoFiles(items, current_folder)
-                
-                # 現在のフォルダの画像を追加（ベースフォルダからの相対パス）
-                for f in files:
-                    full_path = os.path.join(current_folder, f)
-                    relative_path = os.path.relpath(full_path, base_path)
-                    all_images.append(relative_path)
-                
-                # サブフォルダを再帰的に処理
-                for folder in folders:
-                    subfolder_path = os.path.join(current_folder, folder)
-                    collect_recursive(subfolder_path, base_path)
-            except PermissionError:
-                logger.warning(f"アクセス権限がありません: {current_folder}")
-            except Exception as e:
-                logger.warning(f"フォルダ読み込みエラー: {current_folder} - {e}")
-        
-        collect_recursive(base_folder, base_folder)
-        logger.info(f"子フォルダを含めて{len(all_images)}件の画像を収集しました")
-        return all_images
-
-    def RandamGazoSet(self):
-        """ランダム、またはAI順序で画像を返すのじゃ。のじゃ。"""
-        if not self.GazoFiles:
-            return None
-        return random.choice(self.GazoFiles)
-
-    def GetNextAIImage(self, threshold):
-        """AI類似度順で次の画像を取得するのじゃ。のじゃ。"""
-        if not self.GazoFiles:
-            return None
-            
-        # プレイリストに残りがあればそれを返す
-        if self.ai_playlist:
-            next_img = self.ai_playlist.pop(0)
-            self.visited_files.add(next_img)
-            return next_img
-            
-        # プレイリストが空の場合、新しい「シード」を探す
-        # 未訪問のファイルの中から最初のものをシードにするのじゃ
-        seed_cand = [f for f in self.GazoFiles if f not in self.visited_files]
-        
-        if not seed_cand:
-            # 全て訪問済みの場合はリセットして最初から
-            self.visited_files.clear()
-            seed_cand = self.GazoFiles
-            
-        # シード決定（リストの先頭＝フォルダ順の若いもの＝「1番目の画像」）
-        seed_file = seed_cand[0]
-        
-        # シードをプレイリストの先頭に追加
-        self.ai_playlist.append(seed_file)
-        
-        # 類似画像を検索してプレイリストの後ろに繋げる処理
-        engine = VectorEngine.get_instance()
-        if engine.check_available():
-            # 相対パスまたはファイル名からフルパスを構築
-            if os.path.isabs(seed_file):
-                seed_path = seed_file
-            else:
-                seed_path = os.path.join(self.StartFolder, seed_file)
-            seed_hash = calculate_file_hash(seed_path)
-            
-            # シードのベクトル取得（キャッシュにあればラッキー）
-            seed_vec = self.vectors_cache.get(seed_hash)
-            if not seed_vec:
-                # 無ければ計算してみる
-                seed_vec = engine.get_image_feature(seed_path)
-                if seed_vec and seed_hash:
-                    self.vectors_cache[seed_hash] = seed_vec
-
-            if seed_vec:
-                # 他の画像の類似度を計算して高い順に並べる
-                sim_list = []
-                for f in seed_cand: # 自分自身も含むが、それは後で除外されるか、最初にpopされるのでOK
-                    if f == seed_file: continue
-                    
-                    # 相対パスまたはファイル名からフルパスを構築
-                    if os.path.isabs(f):
-                        f_path = f
-                    else:
-                        f_path = os.path.join(self.StartFolder, f)
-                    f_hash = calculate_file_hash(f_path)
-                    f_vec = self.vectors_cache.get(f_hash)
-                    
-                    if not f_vec:
-                        # リアルタイム計算は重いので、キャッシュにない場合スキップするか検討。
-                        # ここではスキップするのじゃ（高速化のため）
-                        continue
-                        
-                    score = engine.compare_features(seed_vec, f_vec)
-                    if score >= threshold:
-                        sim_list.append((f, score))
-                
-                # 類似度が高い順にソート
-                sim_list.sort(key=lambda x: x[1], reverse=True)
-                
-                # プレイリストに追加
-                for f, s in sim_list:
-                    self.ai_playlist.append(f)
-                    # 訪問済みに追加しておかないと、次のシードとして選ばれてしまう可能性があるが、
-                    # 実際にはプレイリスト消化時に visited に入るのでOK。
-                    # ただし、二重登録を防ぐためにここで visited 扱いには...しないほうがいい。
-                    # プレイリストにあるものを次のシード候補から除外するロジックが必要。
-                    
-        # 準備できたので1つ返す
-        return self.GetNextAIImage(threshold) # 再帰呼び出しでpop(0)へ
+    g_geo = f"{w_g}x{h_g}+{x_g}+{y_g}"
+    
+    return f_geo, g_geo
 
 
 
@@ -1361,15 +903,93 @@ class GazoPicture():
                     else:
                         interp_text = "表示オフ"
                 self._info_labels["vector"].config(text=interp_text)
+                
+                # 専用ウィンドウにも反映
+                if hasattr(self, 'vector_win') and self.vector_win:
+                    # ここは image_path = image_path (func arg)
+                    self.update_vector_window_content(image_hash, image_path)
+
 
                 # ウィンドウを表示
                 info_win.deiconify()
             else:
                 # 情報がない場合は非表示
                 info_win.withdraw()
+                if hasattr(self, 'vector_win') and self.vector_win:
+                    self.vector_win.update_content("")
 
         except Exception as e:
             logger.error(f"情報ウィンドウ更新エラー: {e}")
+
+    def update_vector_window_content(self, image_hash, image_path=None):
+        """指定された画像のベクトル情報をベクトルウィンドウに表示するのじゃ。"""
+        if not hasattr(self, 'vector_win') or not self.vector_win:
+            return
+
+        try:
+            vec = self.vectors_cache.get(image_hash)
+            command = None
+            if vec:
+                interpreter = get_interpreter({"vector_display": getattr(app_state, 'vector_display', {})})
+                interp = interpreter.interpret_vector(vec)
+                interp_text = interpreter.format_interpretation_text(interp)
+                # 再解析も可能にする
+                if image_path:
+                    command = lambda: self.perform_manual_vectorization(image_path, image_hash)
+            else:
+                if app_state.vector_display.get("enabled", True):
+                    interp_text = "未登録 (画像窓をクリック、または下のボタンで解析)"
+                    if image_path:
+                         command = lambda: self.perform_manual_vectorization(image_path, image_hash)
+                else:
+                    interp_text = "表示オフ (設定でベクトル表示が無効になっているのじゃ)"
+            
+            self.vector_win.update_content(interp_text, command=command)
+        except Exception as e:
+            logger.error(f"ベクトルウィンドウ更新エラー: {e}")
+
+    def perform_manual_vectorization(self, image_path, image_hash):
+        """手動でベクトル解析を実行する共通メソッドなのじゃ。"""
+        try:
+            # 既にウィンドウが開いている場合、そのラベルを更新したいが、共通化のため
+            # ここではキャッシュとベクトルウィンドウの更新を主に行う。
+            # 画像ウィンドウ内のラベル更新は、再描画トリガーが必要かも？
+            # 手っ取り早く、キャッシュ更新後に update_vector_window_content を呼ぶ。
+            
+            if hasattr(self, 'vector_win') and self.vector_win:
+                 self.vector_win.update_content("解析中... じっこうちゅう～なのじゃ", command=None)
+            
+            self.parent.update() # UI更新
+
+            engine = VectorEngine.get_instance()
+            if engine.check_available():
+                v = engine.get_image_feature(image_path)
+                if v:
+                    self.vectors_cache[image_hash] = v
+                    try:
+                        save_vectors(self.vectors_cache)
+                        logger.info(f"手動ベクトルを保存しました: {image_hash}")
+                    except: pass
+                    
+                    # 結果を表示更新
+                    self.update_vector_window_content(image_hash, image_path)
+                    
+                    # 画像ウィンドウにも反映させたい... 
+                    # 簡易的に、現在開いているウィンドウのラベルも更新する？
+                    # これは update_vector_window_content だけでは足りない。
+                    # しかし、画像ウィンドウ上のクリックロジックは run_manual_vectorize で完結していた。
+                    # 今回はベクトルウィンドウからの呼び出しを想定。
+                else:
+                    if hasattr(self, 'vector_win') and self.vector_win:
+                        self.vector_win.update_content("解釈失敗: AIモデルが応答しないのじゃ", command=lambda: self.perform_manual_vectorization(image_path, image_hash))
+            else:
+                 if hasattr(self, 'vector_win') and self.vector_win:
+                        self.vector_win.update_content("解釈失敗: AIエンジンが準備できていないのじゃ", command=lambda: self.perform_manual_vectorization(image_path, image_hash))
+
+        except Exception as e:
+             logger.error(f"手動解析エラー: {e}")
+             if hasattr(self, 'vector_win') and self.vector_win:
+                 self.vector_win.update_content(f"エラー発生: {e}", command=lambda: self.perform_manual_vectorization(image_path, image_hash))
 
     def _update_rating_display(self, star_labels, rating):
         """評価表示を更新"""
@@ -1403,10 +1023,11 @@ class GazoPicture():
             if hasattr(img_window, "_tag_label"):
                 img_window._tag_label.place_forget()
 
-    def SetUI(self, folder_win, file_win):
+    def SetUI(self, folder_win, file_win, vector_win=None):
         """UIウィンドウの参照を保持するのじゃ。のじゃ。"""
         self.folder_win = folder_win
         self.file_win = file_win
+        self.vector_win = vector_win
 
     def SetFolder(self, folder):
         self.StartFolder = folder
@@ -1576,7 +1197,7 @@ class GazoPicture():
             win.protocol("WM_DELETE_WINDOW", on_img_close)
 
             # ハッシュ計算とパス保持（後の処理で使用）
-            win._image_path = fileName
+            win._image_path = fullName
             win._image_hash = calculate_file_hash(fullName)
 
             # 表示するUI要素によって高さを動的に調整
@@ -1716,7 +1337,15 @@ class GazoPicture():
                     
                     if app_state.show_info_window:
                         cur_zoom = int(scale * 100)
-                        self.update_info_window(fileName, target_win._image_hash, new_w, new_h, cur_zoom)
+                        self.update_info_window(fullName, target_win._image_hash, new_w, new_h, cur_zoom)
+
+                    # ベクトルウィンドウも更新するのじゃ
+                    if hasattr(self, 'vector_win') and self.vector_win:
+                         # target_win._image_path を渡す
+                         self.update_vector_window_content(target_win._image_hash, target_win._image_path)
+
+                         # もしウィンドウが非表示なら表示する？（ユーザーの好みによるが、切り替わる＝表示と解釈）
+                         # ここでは内容更新のみとする
                 except Exception as e:
                     logger.error(f"クリック連動エラー: {e}")
 
@@ -1728,6 +1357,7 @@ class GazoPicture():
             # ハッシュベースのタグ情報を設定
             self.set_image_tag(win, win._image_hash)
 
+
             # 評価ウィンドウを更新（画像表示時）
             if app_state.show_rating_window:
                 self.update_rating_window_for_image(win._image_hash)
@@ -1735,11 +1365,11 @@ class GazoPicture():
             # 情報ウィンドウを更新（画像表示時）
             if app_state.show_info_window:
                 zoom_percent = int(scale * 100)
-                self.update_info_window(fileName, win._image_hash, new_w, new_h, zoom_percent)
+                self.update_info_window(fullName, win._image_hash, new_w, new_h, zoom_percent)
 
             def open_tag_menu(event):
                 menu = tk.Menu(win, tearoff=0)
-                menu.add_command(label="タグを編集", command=lambda: self.edit_tag_dialog(win, fileName, win._image_hash, update_target_win=win))
+                menu.add_command(label="タグを編集", command=lambda: self.edit_tag_dialog(win, fullName, win._image_hash, update_target_win=win))
                 
                 # --- 移動メニューの追加 ---
                 move_menu = tk.Menu(menu, tearoff=0)

@@ -43,6 +43,7 @@ class AppState:
         self.show_file_window = True
         self.show_rating_window = True     # 評価ウィンドウ表示
         self.show_info_window = False      # 情報ウィンドウ表示
+        self.show_vector_window = False    # ベクトルウィンドウ表示 (初期値False)
         self.random_pos = False
         self.random_size = False
         self.topmost = True
@@ -449,6 +450,7 @@ class AppState:
                 "show_folder": self.show_folder_window,
                 "show_file": self.show_file_window,
                 "show_rating_window": self.show_rating_window,
+                "show_vector_window": self.show_vector_window,
                 "show_info_window": self.show_info_window,
                 "rating_ui": self.rating_ui,
                 "ss_mode": self.ss_mode,
@@ -493,6 +495,7 @@ class AppState:
                 self.show_folder_window = settings.get("show_folder", True)
                 self.show_file_window = settings.get("show_file", True)
                 self.show_rating_window = settings.get("show_rating_window", True)
+                self.show_vector_window = settings.get("show_vector_window", False)
                 self.show_info_window = settings.get("show_info_window", False)
                 self.rating_ui = settings.get("rating_ui", {
                     "text_font_size": 10,

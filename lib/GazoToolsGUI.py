@@ -471,3 +471,39 @@ class SplashWindow(tk.Toplevel):
             
     def close(self):
         self.destroy()
+class VectorWindow(tk.Toplevel):
+    """ベクトル解析情報を表示する専用ウィンドウなのじゃ。"""
+    def __init__(self, master, font_size=10):
+        super().__init__(master)
+        self.title("ベクトル解析")
+        self.geometry("300x400")
+        self.withdraw() # 初期状態は非表示
+        self.protocol("WM_DELETE_WINDOW", self.withdraw) # 閉じるボタンで隠すだけ
+
+        # ボタンエリア
+        self.btn_frame = tk.Frame(self)
+        self.btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+        
+        self.analyze_btn = tk.Button(self.btn_frame, text="解析開始 (Start Analysis)", state="disabled")
+        self.analyze_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # テキストエリア (読み取り専用)
+        self.text_area = tk.Text(self, font=("MS Gothic", font_size), state="disabled", wrap="word")
+        self.text_area.pack(expand=True, fill="both", padx=5, pady=5)
+    
+    def update_content(self, text, command=None):
+        """表示内容を更新するのじゃ。commandが渡されたらボタンに設定するのじゃ。"""
+        self.text_area.config(state="normal")
+        self.text_area.delete("1.0", tk.END)
+        self.text_area.insert("1.0", text)
+        self.text_area.config(state="disabled")
+
+        if command:
+            self.analyze_btn.config(state="normal", command=command)
+        else:
+            self.analyze_btn.config(state="disabled")
+
+
+    def show(self):
+        self.deiconify()
+        self.lift()

@@ -100,7 +100,7 @@ def calculate_file_hash(filepath):
 
 def load_tags():
     """タグデータと評価データを読み込むのじゃ。のじゃ。"""
-    tags = {} # key: hash, value: {tag: "...", hint: "...", rating: int or None}
+    tags = {} # key: hash, value: {tag: "...", hint: "...", rating: int or None, assigned_rating: str}
     if os.path.exists(TAG_CSV_FILE):
         try:
             with open(TAG_CSV_FILE, "r", encoding="utf-8") as f:
@@ -111,7 +111,8 @@ def load_tags():
                         t = row[1]
                         hint = row[2] if len(row) > 2 else ""
                         rating = int(row[3]) if len(row) > 3 and row[3] else None
-                        tags[h] = {"tag": t, "hint": hint, "rating": rating}
+                        assigned_rating = row[4] if len(row) > 4 and row[4] else None
+                        tags[h] = {"tag": t, "hint": hint, "rating": rating, "assigned_rating": assigned_rating}
             logger.info(f"タグ・評価データを読み込みました: {len(tags)}件")
         except IOError as e:
             logger.error(f"タグファイル読み込みエラー: {TAG_CSV_FILE}", exc_info=True)
@@ -132,7 +133,8 @@ def save_tags(tags):
             writer = csv.writer(f)
             for h, data in tags.items():
                 rating = data.get("rating", "")
-                writer.writerow([h, data["tag"], data["hint"], rating])
+                assigned_rating = data.get("assigned_rating", "")
+                writer.writerow([h, data["tag"], data["hint"], rating, assigned_rating])
         logger.info(f"タグ・評価データを保存しました: {len(tags)}件")
     except IOError as e:
         logger.error(f"タグファイル書き込みエラー: {TAG_CSV_FILE}", exc_info=True)
@@ -140,7 +142,7 @@ def save_tags(tags):
 
 def load_ratings():
     """評価データを読み込むのじゃ。のじゃ。"""
-    ratings = {}  # key: rating_id, value: {name: "...", rating: int, color: "..."}
+    ratings = {}  # key: rating_id, value: {name: "...", rating: int, linked: bool, custom_rating: int}
     if os.path.exists(RATING_DATA_FILE):
         try:
             with open(RATING_DATA_FILE, "r", encoding="utf-8") as f:
@@ -149,7 +151,40 @@ def load_ratings():
         except (IOError, json.JSONDecodeError) as e:
             logger.error(f"評価データファイル読み込みエラー: {RATING_DATA_FILE}", exc_info=True)
             raise FileOperationError(f"Cannot read rating file: {e}") from e
+    else:
+        # 初回起動時はデフォルト評価を作成
+        ratings = get_default_ratings()
+        save_ratings(ratings)
     return ratings
+
+def get_default_ratings():
+    """デフォルトの評価データを返すのじゃ。のじゃ。"""
+    return {
+        "普通": {
+            "name": "普通",
+            "rating": 3,
+            "linked": True,
+            "custom_rating": 3
+        },
+        "どうでもいい": {
+            "name": "どうでもいい",
+            "rating": 1,
+            "linked": True,
+            "custom_rating": 1
+        },
+        "最高": {
+            "name": "最高",
+            "rating": 5,
+            "linked": True,
+            "custom_rating": 5
+        },
+        "excellent": {
+            "name": "excellent",
+            "rating": 6,
+            "linked": True,
+            "custom_rating": 6
+        }
+    }
 
 def save_ratings(ratings):
     """評価データを保存するのじゃ。のじゃ。"""
@@ -201,7 +236,7 @@ def save_vectors(vectors):
 # Additional Imports for HakoData
 import random
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
-from lib.GazoToolsAI import VectorEngine
+# from lib.GazoToolsAI import VectorEngine # Circular import fix: Moved to local scope
 
 class HakoData():
     """画像データ保持クラスなのじゃ。のじゃ。"""
@@ -302,6 +337,7 @@ class HakoData():
         self.ai_playlist.append(seed_file)
         
         # 類似画像を検索してプレイリストの後ろに繋げる処理
+        from lib.GazoToolsAI import VectorEngine
         engine = VectorEngine.get_instance()
         if engine.check_available():
             # 相対パスまたはファイル名からフルパスを構築

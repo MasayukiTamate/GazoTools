@@ -38,3 +38,18 @@
     - **UI改善**: ベクトル未登録の際、表示ラベルを直接クリックすることで**手動で解析・保存を実行できる機能**を追加しました。自動計算をOFFにしていても、気になる画像だけその場で調べることが可能です。
     - **リファクタリング (Phase 1)**: `GazoToolsLogic.py` からUIコンポーネント（`ScrollableFrame`, `RowWidget`, `SimilarityMoveDialog`, `SplashWindow`）を新設した `lib/GazoToolsGUI.py` に移動しました。
         - これにより循環参照のリスクを低減し、MVCアーキテクチャへの準拠を進めました。
+    - **バグ修正とリファクタリング**:
+        - `GazoToolsApp.py` と `GazoToolsLogic.py` のマージ競合を解消しました。
+        - `lib/GazoToolsData.py` 内の `VectorEngine` インポートによる循環参照エラーを修正（関数内インポートに変更）。
+        - `GazoToolsLogic.py` 内の重複コード（設定、タグ、評価の読み書きロジック）を削除し、`lib/GazoToolsData.py` の共通ロジックを利用するようにリファクタリングしました。
+        - `GazoToolsData.py` に `assigned_rating` をサポートする最新のタグ読み込みロジックを移植しました。
+        - `lib/GazoToolsBasicLib.py` に不足していた `blend_color` 関数を追加しました。
+        - `GazoToolsApp.py` のインポート漏れ（`SplashWindow`, `SimilarityMoveDialog`, `calculate_window_layout`, `blend_color`）を修正し、アプリが正常に起動することを確認しました。
+        - **重要**: リソース監視スレッド（`_update_resource_usage`）で `RuntimeError: main thread is not in main loop` が発生していた問題を修正。UI更新処理を `root.after` を使用してメインスレッドで実行するように変更しました。
+        - `GazoToolsLogic.py` で `app_state` が未定義だったエラーを修正（`get_app_state` のインポート追加）。
+        - `GazoToolsLogic.py` で `get_interpreter` が未定義だったエラーを修正（インポート漏れを追加）。これによりベクトル情報の表示機能が復旧しました。
+    - **機能追加**:
+        - **ベクトル解析専用ウィンドウ** を実装しました。情報ウィンドウとは別に、独立したウィンドウで詳細な解析テキスト（赤色成分: 0.123... 等）を確認できます。メニューから表示/非表示を切り替え可能です。
+        - **クリック連動**: 画像ウィンドウをクリックすると、その画像のベクトル解析情報が「ベクトル解析ウィンドウ」に即座に表示されるようにしました。複数の画像を開いていても、閲覧中の画像の情報にサクサク切り替えられます。
+        - **手動解析ボタン**: ベクトルウィンドウに「解析開始」ボタンを追加しました。未解析の画像を表示中、このボタンを押すことですぐにAI解析を実行・保存できます。（※相対パスだとファイルが見つからないエラーが出ていたのを修正しました）
+        - **状態記憶**: ベクトル解析ウィンドウの表示の有無とウィンドウ位置を、アプリ再起動時に復元するようにしました。これで毎回ウィンドウを出し直す手間が減ります。

@@ -21,8 +21,8 @@ setup_logging(debug_mode=False)  # False=本番モード, True=デバッグモ�
 logger = get_logger(__name__)
 
 # ロジックモジュールのインポート
-from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor, save_ratings, save_tags
-from lib.GazoToolsBasicLib import tkConvertWinSize
+from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor, save_ratings, save_tags, calculate_window_layout
+from lib.GazoToolsBasicLib import tkConvertWinSize, blend_color
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
 from lib.GazoToolsState import get_app_state
 from lib.GazoToolsImageCache import ImageCache, TileImageLoader
@@ -35,6 +35,7 @@ from lib.config_defaults import (
     MIN_AI_THRESHOLD, MAX_AI_THRESHOLD, DEFAULT_AI_THRESHOLD, COLOR_REGISTER_BG,
     RATING_SIZE_PRESETS, RATING_POSITION_PRESETS
 )
+from lib.GazoToolsGUI import SplashWindow, SimilarityMoveDialog, VectorWindow
 
 # --- アプリケーション状態の初期化 ---
 app_state = get_app_state()
@@ -575,15 +576,32 @@ def set_cpu_high_color():
 
 
 # ★ ここからリソース監視スレッドを起動 ★
+# ★ ここからリソース監視スレッドを起動 ★
 def _update_resource_usage():
     while True:
-        cpu = psutil.cpu_percent(interval=1)          # 1 秒ごとに測定
-        mem = psutil.Process().memory_info().rss // (1024 * 1024)  # MB 単位
-        # CPU 使用率に応じて背景色をブレンド
-        ratio = min(cpu / 100.0, 1.0)
-        bg = blend_color(cpu_low_color.get(), cpu_high_color.get(), ratio)
-        status_label.config(text=f"CPU: {cpu}%  MEM: {mem} MB", bg=bg)
-        time.sleep(1)
+        try:
+            cpu = psutil.cpu_percent(interval=1)          # 1 秒ごとに測定
+            mem = psutil.Process().memory_info().rss // (1024 * 1024)  # MB 単位
+            
+            # メインスレッドでUI更新を行うためのクロージャ
+            def update_ui():
+                try:
+                    # CPU 使用率に応じて背景色をブレンド
+                    ratio = min(cpu / 100.0, 1.0)
+                    bg = blend_color(cpu_low_color.get(), cpu_high_color.get(), ratio)
+                    status_label.config(text=f"CPU: {cpu}%  MEM: {mem} MB", bg=bg)
+                except Exception:
+                    pass # アプリ終了時などにエラーになるのを防ぐ
+
+            # メインスレッドにスケジュール
+            if koRoot.winfo_exists():
+                koRoot.after(0, update_ui)
+            else:
+                break # ウィンドウがなくなったら終了
+
+        except Exception:
+            break
+
 threading.Thread(target=_update_resource_usage, daemon=True).start()
 # ★ ここまで ★
 
@@ -1172,11 +1190,36 @@ config_menu.add_command(label="常に最前面(T) ON/OFF", command=lambda: koRoo
 all_items = os.listdir(DEFOLDER)
 folder_win, folder_listbox = create_folder_list_window(koRoot, GetKoFolder(all_items, DEFOLDER))
 file_win, file_listbox = create_file_list_window(koRoot, GetGazoFiles(all_items, DEFOLDER), GazoControl.Drawing)
-GazoControl.SetUI(folder_win, file_win)
+# ベクトル表示用ウィンドウ
+vector_window = VectorWindow(koRoot)
+
+# UI参照をロジックに渡す
+GazoControl.SetUI(folder_win, file_win, vector_window)
+
+# メニューに表示切り替えを追加
+def toggle_vector_window():
+    if vector_window.winfo_viewable():
+        vector_window.withdraw()
+    else:
+        vector_window.show()
+
+vector_sub = tk.Menu(config_menu, tearoff=0)
+config_menu.add_cascade(label="ベクトルウィンドウ", menu=vector_sub)
+vector_sub.add_command(label="表示/非表示", command=toggle_vector_window)
 
 if "main" in SAVED_GEOS: koRoot.geometry(SAVED_GEOS["main"])
 if "folder" in SAVED_GEOS: folder_win.geometry(SAVED_GEOS["folder"])
 if "file" in SAVED_GEOS: file_win.geometry(SAVED_GEOS["file"])
+
+# ベクトルウィンドウの復元
+if SAVED_GEOS.get("vector_window_geometry"):
+    vector_window.geometry(SAVED_GEOS["vector_window_geometry"])
+
+if app_state.show_vector_window:
+    vector_window.show()
+else:
+    vector_window.withdraw()
+
 update_visibility()
 
 folder_win.protocol("WM_DELETE_WINDOW", lambda: (show_folder_win.set(False), folder_win.withdraw()))
@@ -1372,6 +1415,11 @@ def on_closing():
         if GazoControl.file_win: app_state.set_window_geometry("file", GazoControl.file_win.geometry())
         # メインウィンドウは koRoot
         app_state.set_window_geometry("main", koRoot.geometry())
+
+        # ベクトルウィンドウの位置と表示状態保存
+        if vector_window:
+             app_state.set_window_geometry("vector_window_geometry", vector_window.geometry())
+             app_state.show_vector_window = bool(vector_window.winfo_viewable())
 
         cfg = app_state.to_dict()
         save_config(cfg["last_folder"], cfg["geometries"], cfg["settings"])

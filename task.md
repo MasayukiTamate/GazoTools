@@ -51,4 +51,32 @@
     - [x] **Info Window Enhancement**
         - [x] Add vector interpretation to image info window
 
-    - [ ] Report progress
+- [x] Resolve Merge Conflicts
+    - [x] Analyze and fix `GazoToolsApp.py`
+    - [x] Analyze and fix `GazoToolsLogic.py`
+    - [x] Verify application stability
+
+    - [x] Report progress
+
+- [x] Dedicated Vector Analysis Window
+    - [x] Create `VectorWindow` class in `lib/GazoToolsGUI.py`
+    - [x] Instantiate `VectorWindow` in `GazoToolsApp.py`
+    - [x] Update `GazoToolsLogic.py` to output analysis to `VectorWindow`
+    - [x] Verify functionality
+
+- [x] Click-to-Toggle Vector Window
+    - [x] Update `GazoToolsLogic.py` to bind click event on image window
+    - [x] Implement toggle visibility logic in `GazoToolsLogic.py` (referencing `vector_win`)
+    - [x] Verify interaction
+
+- [x] Manual Analysis Button in Vector Window
+    - [x] Add "Run Analysis" button to `VectorWindow`
+    - [x] Implement `perform_manual_vectorization` in `GazoToolsLogic`
+    - [x] Link button to vectorization logic
+    - [x] Verify button functionality
+
+- [x] Persist Vector Window State
+    - [x] Add defaults to `lib/config_defaults.py`
+    - [x] Update `GazoToolsApp.py` to apply saved geometry/visibility on startup
+    - [x] Update `GazoToolsApp.py` to save geometry/visibility on exit
+    - [x] Verify state restoration
