@@ -175,6 +175,20 @@ def get_default_config():
             "show_semantic_features": DEFAULT_SHOW_SEMANTIC_FEATURES,
             "max_dimensions_to_show": MAX_VECTOR_DIMENSIONS_DISPLAY,
             "similarity_threshold": VECTOR_SIMILARITY_THRESHOLD,
+            "show_internal_values": False,       # 内部数値の表示（デフォルトOFF）
+            "auto_vectorize": True,             # 未登録時に自動で計算する（デフォルトON）
+        },
+        "rating_ui": {
+            "text_font_size": 10,      # 評価テキストのフォントサイズ
+            "star_font_size": 16,      # 星のフォントサイズ
+            "layout_order": ["text", "stars", "settings"],  # UI要素の順序
+            "window_width": 320,       # ウィンドウ幅
+            "window_height": 140,      # ウィンドウ高さ
+            "position_x": 50,          # X座標（%）
+            "position_y": 85,          # Y座標（%）
+            "padding_x": 10,           # 水平パディング
+            "padding_y": 8,            # 垂直パディング
+            "margin": 15,              # ウィンドウ外側マージン
         }
     }
 
@@ -315,7 +329,31 @@ def validate_ss_interval(interval: int) -> bool:
 
 
 # ===========================
-# 11. ログ設定
+# 11. 評価UIプリセット
+# ===========================
+# サイズプリセット
+RATING_SIZE_PRESETS = {
+    "小": {"width": 280, "height": 120},
+    "中": {"width": 320, "height": 140},
+    "大": {"width": 380, "height": 160}
+}
+
+# 位置プリセット（画面上の9つの位置）
+RATING_POSITION_PRESETS = {
+    "左上": {"x": 5, "y": 5},
+    "中央上": {"x": 50, "y": 5},
+    "右上": {"x": 95, "y": 5},
+    "左中央": {"x": 5, "y": 50},
+    "中央": {"x": 50, "y": 50},
+    "右中央": {"x": 95, "y": 50},
+    "左下": {"x": 5, "y": 85},
+    "中央下": {"x": 50, "y": 85},
+    "右下": {"x": 95, "y": 85}
+}
+
+
+# ===========================
+# 12. ログ設定
 # ===========================
 LOG_LEVEL_DEBUG = "DEBUG"
 LOG_LEVEL_INFO = "INFO"

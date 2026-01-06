@@ -171,13 +171,17 @@ class VectorInterpreter:
                                         Noneの場合は設定から取得。
         
         Returns:
-            Dict: 解釈結果。以下の構造:
-                {
-                    "mode": str,  # 使用した解釈モード
-                    "dimensions": List[Dict],
-                    "summary": str  # 要約テキスト
-                }
+            Dict: 解釈結果
         """
+        # 入力検証とデバッグログ
+        if not isinstance(vector, (list, tuple)):
+            logger.error(f"不正なベクトル型: {type(vector)}")
+            raise TypeError(f"Vector must be a list or tuple, got {type(vector)}")
+            
+        if len(vector) != 1024:
+            logger.warning(f"ベクトルの次元数が想定(1024)と異なります: {len(vector)}")
+            # エラーにはせず、継続を試みるが、マッピングは1024次元前提なので注意
+            
         if not self.config.get("vector_display", {}).get("enabled", True):
             return {"mode": "disabled", "dimensions": [], "summary": ""}
         
@@ -329,18 +333,30 @@ class VectorInterpreter:
         
         lines = [f"[{mode.upper()}モード]"]
         
+        show_values = False
+        try:
+            vd = self.config.get("vector_display", {})
+            if isinstance(vd, dict):
+                show_values = vd.get("show_internal_values", False)
+        except Exception:
+            pass # デフォルトOFF
+
         for i, dim in enumerate(dimensions, 1):
             idx = dim["index"]
             value = dim["value"]
             name = dim["name"]
             
-            # パーセンテージ表示
-            if mode == "shap":
-                pct = value * 100
-                lines.append(f"  {i}. {name} (寄与度: {pct:.1f}%)")
+            # 数値表示の切り替え
+            if show_values:
+                # パーセンテージ表示
+                if mode == "shap":
+                    pct = value * 100
+                    lines.append(f"  {i}. {name} (寄与度: {pct:.1f}%)")
+                else:
+                    score = value * 100
+                    lines.append(f"  {i}. {name} (スコア: {score:.1f}%)")
             else:
-                score = value * 100
-                lines.append(f"  {i}. {name} (スコア: {score:.1f}%)")
+                lines.append(f"  {i}. {name}")
         
         return "\n".join(lines)
     

@@ -65,7 +65,16 @@ class AppState:
             "show_semantic_features": True,
             "max_dimensions_to_show": 10,
             "similarity_threshold": 0.05,
+            "show_internal_values": False,
+            "auto_vectorize": True,
         }
+
+        # スマート移動設定
+        self.smart_move_threshold = 0.90
+        self.smart_move_show_thumbnails = True
+
+        # スプラッシュ設定
+        self.show_splash_tips = False
         
         # ウィンドウジオメトリ
         self.window_geometries = {
@@ -87,6 +96,20 @@ class AppState:
         self.image_min_height = DEFAULT_IMAGE_MIN_HEIGHT
         self.image_max_width = DEFAULT_IMAGE_MAX_WIDTH
         self.image_max_height = DEFAULT_IMAGE_MAX_HEIGHT
+
+        # 評価UI設定
+        self.rating_ui = {
+            "text_font_size": 10,
+            "star_font_size": 16,
+            "layout_order": ["text", "stars", "settings"],
+            "window_width": 320,
+            "window_height": 140,
+            "position_x": 50,
+            "position_y": 85,
+            "padding_x": 10,
+            "padding_y": 8,
+            "margin": 15,
+        }
 
         # 画像評価データ（タグデータから同期）
         self.image_ratings = {}
@@ -296,6 +319,25 @@ class AppState:
         logger.debug(f"子フォルダを含める: {enabled}")
         self._notify_callbacks("ss_include_subfolders_changed", {"enabled": enabled})
     
+    def set_smart_move_threshold(self, threshold):
+        """スマート移動の閾値設定"""
+        self.smart_move_threshold = max(0.0, min(1.0, threshold))
+        logger.debug(f"スマート移動閾値: {self.smart_move_threshold}")
+        # 特にUI更新は不要かもしれないが、一応通知しても良い
+        self._notify_callbacks("smart_move_threshold_changed", {"threshold": self.smart_move_threshold})
+
+    def set_smart_move_show_thumbnails(self, enabled):
+        """スマート移動のサムネイル表示設定"""
+        self.smart_move_show_thumbnails = enabled
+        logger.debug(f"スマート移動サムネイル: {enabled}")
+        self._notify_callbacks("smart_move_show_thumbnails_changed", {"enabled": enabled})
+
+    def set_show_splash_tips(self, enabled):
+        """スプラッシュスクリーンのTips表示設定"""
+        self.show_splash_tips = enabled
+        logger.debug(f"スプラッシュTips表示: {enabled}")
+        self._notify_callbacks("show_splash_tips_changed", {"enabled": enabled})
+
     # ==================== ウィンドウジオメトリ ====================
     
     def set_window_geometry(self, window_name, geometry):
@@ -336,6 +378,24 @@ class AppState:
         self.cpu_high_color = high_color
         logger.debug(f"CPU色設定: {low_color} → {high_color}")
         self._notify_callbacks("cpu_colors_changed", {"low": low_color, "high": high_color})
+    
+    def set_image_size_limits(self, min_w, min_h, max_w, max_h):
+        """画像表示サイズ制限を設定
+        
+        Args:
+            min_w (int): 最小幅
+            min_h (int): 最小高さ
+            max_w (int): 最大幅
+            max_h (int): 最大高さ
+        """
+        self.image_min_width = min_w
+        self.image_min_height = min_h
+        self.image_max_width = max_w
+        self.image_max_height = max_h
+        logger.debug(f"画像サイズ制限設定: Min({min_w}x{min_h}), Max({max_w}x{max_h})")
+        self._notify_callbacks("image_size_limits_changed", {
+            "min_w": min_w, "min_h": min_h, "max_w": max_w, "max_h": max_h
+        })
     
     # ==================== コールバック管理 ====================
     
@@ -390,6 +450,7 @@ class AppState:
                 "show_file": self.show_file_window,
                 "show_rating_window": self.show_rating_window,
                 "show_info_window": self.show_info_window,
+                "rating_ui": self.rating_ui,
                 "ss_mode": self.ss_mode,
                 "ss_interval": self.ss_interval,
                 "ss_ai_mode": self.ss_ai_mode,
@@ -405,6 +466,9 @@ class AppState:
                 "image_max_width": self.image_max_width,
                 "image_max_height": self.image_max_height,
                 "vector_display": self.vector_display,
+                "smart_move_threshold": self.smart_move_threshold,
+                "smart_move_show_thumbnails": self.smart_move_show_thumbnails,
+                "show_splash_tips": self.show_splash_tips,
             }
         }
     
@@ -430,6 +494,18 @@ class AppState:
                 self.show_file_window = settings.get("show_file", True)
                 self.show_rating_window = settings.get("show_rating_window", True)
                 self.show_info_window = settings.get("show_info_window", False)
+                self.rating_ui = settings.get("rating_ui", {
+                    "text_font_size": 10,
+                    "star_font_size": 16,
+                    "layout_order": ["text", "stars", "settings"],
+                    "window_width": 320,
+                    "window_height": 140,
+                    "position_x": 50,
+                    "position_y": 85,
+                    "padding_x": 10,
+                    "padding_y": 8,
+                    "margin": 15,
+                })
                 self.ss_mode = settings.get("ss_mode", False)
                 self.ss_interval = settings.get("ss_interval", 5)
                 self.ss_ai_mode = settings.get("ss_ai_mode", False)
@@ -448,6 +524,7 @@ class AppState:
                 self.image_max_width = settings.get("image_max_width", DEFAULT_IMAGE_MAX_WIDTH)
                 self.image_max_height = settings.get("image_max_height", DEFAULT_IMAGE_MAX_HEIGHT)
                 
+
                 move_list = settings.get("move_dest_list", [])
                 if len(move_list) < 12:
                     move_list = (move_list + [""] * 12)[:12]
@@ -459,6 +536,10 @@ class AppState:
                 vdisp = settings.get("vector_display")
                 if isinstance(vdisp, dict):
                     self.vector_display.update(vdisp)
+                
+                self.smart_move_threshold = settings.get("smart_move_threshold", 0.90)
+                self.smart_move_show_thumbnails = settings.get("smart_move_show_thumbnails", True)
+                self.show_splash_tips = settings.get("show_splash_tips", False)
             
             logger.info("状態を復元しました")
         except Exception as e:

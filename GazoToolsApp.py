@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 # ロジックモジュールのインポート
 from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor, save_ratings, save_tags
+from lib.GazoToolsGUI import SplashWindow, SimilarityMoveDialog
 from lib.GazoToolsBasicLib import tkConvertWinSize
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
 from lib.GazoToolsState import get_app_state
@@ -32,11 +33,29 @@ from lib.config_defaults import (
     WINDOW_SPACING, SCREEN_MARGIN, COLOR_MOVE_BG_1, COLOR_CPU_LOW, COLOR_CPU_HIGH,
     get_move_grid_columns, MOVE_DESTINATION_SLOTS, MOVE_DESTINATION_MIN,
     MOVE_DESTINATION_OPTIONS, COLOR_MOVE_BG_2, SS_INTERVAL_OPTIONS, 
-    MIN_AI_THRESHOLD, MAX_AI_THRESHOLD, DEFAULT_AI_THRESHOLD, COLOR_REGISTER_BG
+    MIN_AI_THRESHOLD, MAX_AI_THRESHOLD, DEFAULT_AI_THRESHOLD, COLOR_REGISTER_BG,
+    RATING_SIZE_PRESETS, RATING_POSITION_PRESETS
 )
 
 # --- アプリケーション状態の初期化 ---
 app_state = get_app_state()
+
+# --- タイトル（スプラッシュ画面）表示：最優先なのじゃ ---
+koRoot = TkinterDnD.Tk()
+koRoot.withdraw() # メインウィンドウを隠す
+splash = SplashWindow(koRoot)
+
+def close_splash():
+    try:
+        splash.close()
+        koRoot.deiconify() # メインウィンドウを表示
+        if app_state.topmost:
+            koRoot.attributes("-topmost", True)
+    except:
+        pass
+
+# 最低保証時間のタイマー (1.5秒)
+koRoot.after(1500, close_splash)
 
 # --- 画像キャッシュの初期化 ---
 try:
@@ -222,7 +241,7 @@ def create_folder_list_window(parent, folders):
     
     btn_frame = tk.Frame(win)
     btn_frame.pack(fill=tk.X, padx=5, pady=5)
-    tk.Button(btn_frame, text="↑ 上のフォルダへ", command=lambda: refresh_ui(os.path.dirname(DEFOLDER))).pack(fill=tk.X)
+    tk.Button(btn_frame, text="↑ 上のフォルダへ", command=lambda: app_state.set_current_folder(os.path.dirname(DEFOLDER))).pack(fill=tk.X)
 
     frame = tk.Frame(win)
     frame.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
@@ -289,9 +308,9 @@ def create_folder_list_window(parent, folders):
         try:
             idx = lb.curselection()[0]
             sel = lb.get(idx)
-            if idx == 0: refresh_ui(DEFOLDER); return
+            if idx == 0: app_state.set_current_folder(DEFOLDER); return
             if ") " in sel: sel = sel.split(") ", 1)[1]
-            refresh_ui(os.path.join(DEFOLDER, sel))
+            app_state.set_current_folder(os.path.join(DEFOLDER, sel))
         except: pass
 
     lb.bind("<Button-3>", on_right_click)
@@ -343,7 +362,7 @@ def create_file_list_window(parent, files, draw_func):
                         new_name = new_root + ext
                         new_path = os.path.join(DEFOLDER, new_name)
                         os.rename(full_path, new_path)
-                        refresh_ui(DEFOLDER)
+                        app_state.set_current_folder(DEFOLDER)
                         print(f"[RENAME] {filename} -> {new_name}")
                     except Exception as e:
                         messagebox.showerror("エラー", f"名前変更に失敗したのじゃ: {e}")
@@ -364,8 +383,6 @@ def create_file_list_window(parent, files, draw_func):
                 else:
                     move_menu.add_command(label=f"{i+1}: (未登録)", state="disabled")
 
-            # タグ追加
-            def add_tag():
                 h = calculate_file_hash(full_path)
                 if h:
                     GazoControl.edit_tag_dialog(win, filename, h, update_target_win=None)
@@ -373,6 +390,28 @@ def create_file_list_window(parent, files, draw_func):
                     messagebox.showerror("エラー", "ハッシュ計算に失敗したのじゃ")
 
             popup.add_command(label="タグ追加/編集", command=add_tag)
+
+            # 類似画像検索 (Smart Move UI再利用)
+            def search_similar():
+                try:
+                    target_dest = move_dest_list[move_reg_idx] if move_dest_list[move_reg_idx] else ""
+                    # move_callbackはexecute_moveでOK
+                    # refresh_callbackはこのウィンドウを更新する関数があればそれを渡すが、
+                    # ファイルリストは自動更新されない造りっぽいので、refresh= lambda p: draw_func(None) ?
+                    # draw_funcは画像を表示する関数なので違う。
+                    # リスト更新は... ファイルリストウィンドウ再生成？
+                    # まぁ移動機能メインじゃないのでNoneでも良いが、移動したら消えてほしい。
+                    
+                    # 簡易的に None でいく（移動時は手動でウィンドウ閉じて開き直してもらうか、
+                    # SmartMoveDialogが勝手にやってくれるのを期待）
+                    # execute_move は成功時に move_dest_count を更新したりするが、UI更新は...
+                    
+                    dialog = SimilarityMoveDialog(win, full_path, target_dest, DEFOLDER, execute_move, refresh_callback=None)
+                except Exception as e:
+                    messagebox.showerror("エラー", f"類似画像検索起動エラー: {e}")
+
+            popup.add_command(label="類似画像を探す", command=search_similar)
+
 
             popup.post(event.x_root, event.y_root)
         except Exception as e:
@@ -383,7 +422,8 @@ def create_file_list_window(parent, files, draw_func):
     return win, lb
 
 # --- メイン処理 ---
-koRoot = TkinterDnD.Tk()
+# (koRootとスプラッシュ表示は最上部に移動したのじゃ)
+
 koRoot.attributes("-topmost", True)
 koRoot.geometry(tkConvertWinSize(list([200, 150, 50, 100])))
 koRoot.title("画像tools")
@@ -582,6 +622,17 @@ config_menu.add_cascade(label="リソース表示設定", menu=resource_sub)
 resource_sub.add_command(label="CPU低負荷時の色設定", command=set_cpu_low_color)
 resource_sub.add_command(label="CPU高負荷時の色設定", command=set_cpu_high_color)
 
+# スプラッシュ設定
+splash_sub = tk.Menu(config_menu, tearoff=0)
+config_menu.add_cascade(label="起動画面設定", menu=splash_sub)
+splash_tips_var = tk.BooleanVar(value=app_state.show_splash_tips)
+def on_splash_tips_change():
+    app_state.set_show_splash_tips(splash_tips_var.get())
+    # 設定保存
+    cfg = app_state.to_dict()
+    save_config(cfg["last_folder"], cfg["geometries"], cfg["settings"])
+splash_sub.add_checkbutton(label="起動時に豆知識(Tips)を表示", variable=splash_tips_var, command=on_splash_tips_change)
+
 # ベクトル表示設定ダイアログ
 def open_vector_settings():
     win = tk.Toplevel(koRoot)
@@ -759,6 +810,36 @@ def on_show_vector_change(*args):
     app_state.vector_display["enabled"] = show_vector_win.get()
     # 現在表示中の画像ウィンドウのサイズを調整
     update_open_windows_size()
+
+show_vector_win.trace_add("write", on_show_vector_change)
+config_menu.add_checkbutton(label="ベクトル情報を表示", variable=show_vector_win)
+
+# ベクトル数値表示設定の変更をキャッチする関数
+show_vector_values = tk.BooleanVar(value=app_state.vector_display.get("show_internal_values", False))
+
+def on_show_vector_values_change(*args):
+    app_state.vector_display["show_internal_values"] = show_vector_values.get()
+    # 表示内容を更新するためのトリガー（ウィンドウサイズ調整で再描画されるか？）
+    # GazoPicture.update_rating_windowなどは再描画するが、ベクトルテキストは再生成が必要。
+    # ここでは簡易的に全ウィンドウ再調整を呼ぶが、テキスト内容は再生成されないかも。
+    # 本当は interpret_vector を呼び直す必要があるが、GazoPicture側で描画時に呼ばれるはず。
+    # しかし既存のラベルのテキストを変えるには、Logic側の更新が必要。
+    # 簡易実装として、次の描画（次画像表示）から反映される、でも良いが、即時反映したい。
+    # update_open_windows_size() は pack/unpack だけ。
+    # 即時反映は少し手間なので、一旦変数の更新だけにする。ユーザーが画像を切り替えれば反映される。
+    pass
+
+show_vector_values.trace_add("write", on_show_vector_values_change)
+config_menu.add_checkbutton(label="└ 内部数値も表示する", variable=show_vector_values)
+
+# 自動ベクトル計算設定
+auto_vectorize = tk.BooleanVar(value=app_state.vector_display.get("auto_vectorize", True))
+def on_auto_vectorize_change(*args):
+    app_state.vector_display["auto_vectorize"] = auto_vectorize.get()
+
+auto_vectorize.trace_add("write", on_auto_vectorize_change)
+config_menu.add_checkbutton(label="└ 未登録なら自動で計算する", variable=auto_vectorize)
+
 
 # 開いているウィンドウのサイズを再調整する関数
 def update_open_windows_size():
@@ -958,6 +1039,157 @@ def open_image_size_settings():
     tk.Button(btn_frame, text="キャンセル", width=10, command=on_cancel).pack(side=tk.LEFT, padx=5)
 
 config_menu.add_command(label="画像表示サイズ設定...", command=open_image_size_settings)
+
+# 評価UI設定ダイアログ
+def open_rating_ui_settings():
+    """評価UI設定ダイアログを表示するのじゃ。"""
+    win = tk.Toplevel(koRoot)
+    win.title("評価UI設定")
+    win.attributes("-topmost", True)
+    win.geometry("400x600")  # ウィンドウサイズを大きくする
+
+    # 現在の設定値を取得
+    current_settings = app_state.rating_ui.copy()
+
+    # プリセット変更時のコールバック関数
+    def on_size_preset_change(preset_name, width_var, height_var):
+        if preset_name in RATING_SIZE_PRESETS:
+            preset = RATING_SIZE_PRESETS[preset_name]
+            width_var.set(preset["width"])
+            height_var.set(preset["height"])
+
+    def on_position_preset_change(preset_name, pos_x_var, pos_y_var):
+        if preset_name in RATING_POSITION_PRESETS:
+            preset = RATING_POSITION_PRESETS[preset_name]
+            pos_x_var.set(preset["x"])
+            pos_y_var.set(preset["y"])
+
+    # サイズプリセット
+    tk.Label(win, text="サイズプリセット:").grid(row=0, column=0, sticky="w", padx=10, pady=5)
+    size_preset_var = tk.StringVar(value="カスタム")
+
+    # 現在のサイズに最も近いプリセットを探す
+    current_width = current_settings.get("window_width", 320)
+    current_height = current_settings.get("window_height", 140)
+    for preset_name, preset_data in RATING_SIZE_PRESETS.items():
+        if preset_data["width"] == current_width and preset_data["height"] == current_height:
+            size_preset_var.set(preset_name)
+            break
+
+    size_options = ["カスタム"] + list(RATING_SIZE_PRESETS.keys())
+    size_menu = tk.OptionMenu(win, size_preset_var, *size_options, command=lambda v: on_size_preset_change(v, width_var, height_var))
+    size_menu.config(width=8)
+    size_menu.grid(row=0, column=1, padx=10, pady=5)
+
+    # 詳細サイズ設定
+    tk.Label(win, text="幅:").grid(row=1, column=0, sticky="w", padx=10, pady=5)
+    width_var = tk.IntVar(value=current_width)
+    tk.Spinbox(win, from_=200, to=600, textvariable=width_var, width=5).grid(row=1, column=1, padx=10, pady=5)
+
+    tk.Label(win, text="高さ:").grid(row=2, column=0, sticky="w", padx=10, pady=5)
+    height_var = tk.IntVar(value=current_height)
+    tk.Spinbox(win, from_=100, to=400, textvariable=height_var, width=5).grid(row=2, column=1, padx=10, pady=5)
+
+    # 位置プリセット
+    tk.Label(win, text="位置プリセット:").grid(row=3, column=0, sticky="w", padx=10, pady=(10,5))
+    position_preset_var = tk.StringVar(value="カスタム")
+
+    # 現在の位置に最も近いプリセットを探す
+    current_pos_x = current_settings.get("position_x", 50)
+    current_pos_y = current_settings.get("position_y", 85)
+    for preset_name, preset_data in RATING_POSITION_PRESETS.items():
+        if preset_data["x"] == current_pos_x and preset_data["y"] == current_pos_y:
+            position_preset_var.set(preset_name)
+            break
+
+    position_options = ["カスタム"] + list(RATING_POSITION_PRESETS.keys())
+    position_menu = tk.OptionMenu(win, position_preset_var, *position_options, command=lambda v: on_position_preset_change(v, pos_x_var, pos_y_var))
+    position_menu.config(width=8)
+    position_menu.grid(row=3, column=1, padx=10, pady=(10,5))
+
+    # 詳細位置設定（%）
+    tk.Label(win, text="横位置 (%):").grid(row=4, column=0, sticky="w", padx=10, pady=5)
+    pos_x_var = tk.IntVar(value=current_pos_x)
+    tk.Spinbox(win, from_=0, to=100, textvariable=pos_x_var, width=5).grid(row=4, column=1, padx=10, pady=5)
+
+    tk.Label(win, text="縦位置 (%):").grid(row=5, column=0, sticky="w", padx=10, pady=5)
+    pos_y_var = tk.IntVar(value=current_pos_y)
+    tk.Spinbox(win, from_=0, to=100, textvariable=pos_y_var, width=5).grid(row=5, column=1, padx=10, pady=5)
+
+    # パディング設定
+    tk.Label(win, text="水平パディング:").grid(row=6, column=0, sticky="w", padx=10, pady=5)
+    padding_x_var = tk.IntVar(value=current_settings.get("padding_x", 10))
+    tk.Spinbox(win, from_=0, to=50, textvariable=padding_x_var, width=5).grid(row=6, column=1, padx=10, pady=5)
+
+    tk.Label(win, text="垂直パディング:").grid(row=7, column=0, sticky="w", padx=10, pady=5)
+    padding_y_var = tk.IntVar(value=current_settings.get("padding_y", 8))
+    tk.Spinbox(win, from_=0, to=50, textvariable=padding_y_var, width=5).grid(row=7, column=1, padx=10, pady=5)
+
+    tk.Label(win, text="ウィンドウマージン:").grid(row=8, column=0, sticky="w", padx=10, pady=5)
+    margin_var = tk.IntVar(value=current_settings.get("margin", 15))
+    tk.Spinbox(win, from_=0, to=100, textvariable=margin_var, width=5).grid(row=8, column=1, padx=10, pady=5)
+
+    # フォントサイズ設定
+    tk.Label(win, text="評価テキストのフォントサイズ:").grid(row=9, column=0, sticky="w", padx=10, pady=(15,5))
+    text_size_var = tk.IntVar(value=current_settings.get("text_font_size", 10))
+    tk.Spinbox(win, from_=8, to=24, textvariable=text_size_var, width=5).grid(row=9, column=1, padx=10, pady=(15,5))
+
+    tk.Label(win, text="星のフォントサイズ:").grid(row=10, column=0, sticky="w", padx=10, pady=5)
+    star_size_var = tk.IntVar(value=current_settings.get("star_font_size", 16))
+    tk.Spinbox(win, from_=12, to=32, textvariable=star_size_var, width=5).grid(row=10, column=1, padx=10, pady=5)
+
+    # UIレイアウト順序設定
+    tk.Label(win, text="UI要素の順序:").grid(row=11, column=0, sticky="w", padx=10, pady=(15,5))
+
+    layout_frame = tk.Frame(win)
+    layout_frame.grid(row=11, column=1, sticky="w", padx=10, pady=(15,5))
+
+    current_order = current_settings.get("layout_order", ["text", "stars", "settings"])
+    order_vars = []
+
+    elements = [("text", "評価名"), ("stars", "星"), ("settings", "設定")]
+    for i, (key, label) in enumerate(elements):
+        tk.Label(layout_frame, text=f"{i+1}.").grid(row=0, column=i*2, padx=2)
+        var = tk.StringVar(value=current_order[i] if i < len(current_order) else key)
+        tk.OptionMenu(layout_frame, var, "text", "stars", "settings").grid(row=0, column=i*2+1, padx=2)
+        tk.Label(layout_frame, text=f"({label})").grid(row=1, column=i*2+1, sticky="n")
+        order_vars.append(var)
+
+    def on_save():
+        # 設定を保存
+        new_settings = {
+            "window_width": width_var.get(),
+            "window_height": height_var.get(),
+            "position_x": pos_x_var.get(),
+            "position_y": pos_y_var.get(),
+            "padding_x": padding_x_var.get(),
+            "padding_y": padding_y_var.get(),
+            "margin": margin_var.get(),
+            "text_font_size": text_size_var.get(),
+            "star_font_size": star_size_var.get(),
+            "layout_order": [var.get() for var in order_vars]
+        }
+        app_state.rating_ui.update(new_settings)
+
+        # UIを更新
+        GazoControl.update_rating_ui_settings()
+
+        # 設定ファイルに保存
+        cfg_all = app_state.to_dict()
+        save_config(cfg_all["last_folder"], cfg_all.get("geometries", {}), cfg_all["settings"])
+        win.destroy()
+
+    def on_cancel():
+        win.destroy()
+
+    # ボタン
+    btn_frame = tk.Frame(win)
+    btn_frame.grid(row=12, column=0, columnspan=2, pady=20)
+
+    tk.Button(btn_frame, text="保存", command=on_save).pack(side=tk.LEFT, padx=10)
+    tk.Button(btn_frame, text="キャンセル", command=on_cancel).pack(side=tk.LEFT, padx=10)
+
+config_menu.add_command(label="評価UI設定...", command=open_rating_ui_settings)
 config_menu.add_separator()
 config_menu.add_command(label="常に最前面(T) ON/OFF", command=lambda: koRoot.attributes("-topmost", not koRoot.attributes("-topmost")))
 
@@ -1022,6 +1254,10 @@ def execute_move(file_path, dest_folder, refresh=True):
     except Exception as e:
         logger.error(f"ファイル移動エラー: {file_path} -> {dest_folder}", exc_info=True)
         messagebox.showerror("失敗", f"移動中にエラーが起きたのじゃ: {e}")
+
+# 移動処理コールバックをLogic側に登録
+GazoControl.set_move_callback(execute_move)
+GazoControl.set_refresh_callback(refresh_ui)
 
 def rebuild_move_area():
     """移動先エリアを数に合わせて作り直すのじゃ。のじゃ。
@@ -1149,5 +1385,27 @@ koRoot.bind_all("<Control-i>", on_ctrl_i)
 
 if ss_mode.get():
     koRoot.after(1000, auto_slideshow)
+
+
+def on_closing():
+    """アプリ終了時の処理"""
+    try:
+        # 現在の状態を取得して保存
+        # ウィンドウ位置を更新
+        if GazoControl.folder_win: app_state.set_window_geometry("folder", GazoControl.folder_win.geometry())
+        if GazoControl.file_win: app_state.set_window_geometry("file", GazoControl.file_win.geometry())
+        # メインウィンドウは koRoot
+        app_state.set_window_geometry("main", koRoot.geometry())
+
+        cfg = app_state.to_dict()
+        save_config(cfg["last_folder"], cfg["geometries"], cfg["settings"])
+        logger.info("アプリケーションを終了します (設定を保存しました)")
+    except Exception as e:
+        logger.error(f"終了時の保存エラー: {e}")
+    
+    koRoot.destroy()
+    sys.exit(0)
+
+koRoot.protocol("WM_DELETE_WINDOW", on_closing)
 
 koRoot.mainloop()

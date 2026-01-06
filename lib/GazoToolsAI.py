@@ -53,8 +53,16 @@ class VectorEngine:
             self.model = models.mobilenet_v3_small(weights=self.weights)
             
             if self.debug_mode:
-                logger.debug("手順3: 特徴抽出用にモデルを改造するのじゃ。")
-            self.model.classifier = torch.nn.Identity()
+                logger.debug("手順3: 特徴抽出用にモデルを改造するのじゃ（1024次元出力用）。")
+            # 576次元 -> 1024次元への変換（Linear -> Hardswish -> Dropout）だけを残し、
+            # 最後の1000クラス分類層だけを削除するのじゃ
+            # MobileNetV3 SmallのClassifierは [Linear(576, 1024), Hardswish, Dropout, Linear(1024, 1000)]
+            self.model.classifier = torch.nn.Sequential(
+                self.model.classifier[0], # Linear(576, 1024)
+                self.model.classifier[1], # Hardswish
+                self.model.classifier[2], # Dropout
+                torch.nn.Identity()       # 最後のLinearを無効化
+            )
             
             if self.debug_mode:
                 logger.debug("手順4: 推論モード (eval) に切り替えるのじゃ。")
