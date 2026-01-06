@@ -1,6 +1,7 @@
 '''
 作成者: tamate masayuki (Refactored by Antigravity)
 機能: GazoTools のデータ管理、設定管理、およびロジック制御
+※ 純粋なビジネスロジック（計算・判断）を集約しているのじゃ。
 '''
 import os
 import json
@@ -21,26 +22,37 @@ from lib.GazoToolsExceptions import (
     VectorProcessingError, FileOperationError, FolderAccessError
 )
 from lib.GazoToolsLogger import LoggerManager
-from lib.config_defaults import (
-    get_default_config, MOVE_DESTINATION_SLOTS,
-    TAG_CSV_FILE, VECTOR_DATA_FILE, RATING_DATA_FILE, CONFIG_FILE
-)
-from lib.GazoToolsState import get_app_state
-
-# グローバル AppState を取得
-app_state = get_app_state()
-import threading
-import time
 
 # ロギング設定
 logger = LoggerManager.get_logger(__name__)
 
-def load_config():
-    """設定ファイルを読み込むのじゃ。のじゃ。
+# Data access functions (re-exported for compatibility if needed)
+from lib.GazoToolsData import (
+    load_config, save_config, calculate_file_hash,
+    load_tags, save_tags, load_ratings, save_ratings,
+    load_vectors, save_vectors
+)
+
+from lib.config_defaults import (
+    calculate_folder_window_width, calculate_folder_window_height,
+    calculate_file_window_width, calculate_file_window_height,
+    WINDOW_SPACING
+)
+
+# ----------------------------------------------------------------------
+# 画面レイアウト計算ロジック
+# ----------------------------------------------------------------------
+def calculate_window_layout(root_x, root_y, root_w, screen_w, folders, files, current_folder_name):
+    """メインウィンドウの位置とサイズを基準に、サブウィンドウの最適な配置を計算するのじゃ。
     
-    config_defaults.py のデフォルト値を使用して、ファイルから設定を読み込みます。
-    ファイルが存在しない場合はデフォルト値を返します。
-    
+    Args:
+        root_x, root_y: メインウィンドウの座標
+        root_w: メインウィンドウの幅
+        screen_w: 画面幅
+        folders: フォルダリスト
+        files: ファイルリスト
+        current_folder_name: カレントフォルダ名
+        
     Returns:
         dict: 設定辞書
         

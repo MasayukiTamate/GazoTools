@@ -22,7 +22,6 @@ logger = get_logger(__name__)
 
 # ロジックモジュールのインポート
 from GazoToolsLogic import load_config, save_config, HakoData, GazoPicture, calculate_file_hash, VectorBatchProcessor, save_ratings, save_tags
-from lib.GazoToolsGUI import SplashWindow, SimilarityMoveDialog
 from lib.GazoToolsBasicLib import tkConvertWinSize
 from lib.GazoToolsLib import GetKoFolder, GetGazoFiles
 from lib.GazoToolsState import get_app_state
@@ -207,32 +206,20 @@ def refresh_ui(new_path):
         adjust_window_layouts(folders, files)
 
 def adjust_window_layouts(folders, files):
-    """ウィンドウ配置の自動調整なのじゃ。のじゃ。
-    
-    config_defaults.py の計算関数を使用してウィンドウサイズを決定します。
-    """
+    """ウィンドウ配置の自動調整なのじゃ。のじゃ。"""
     root_x, root_y = koRoot.winfo_x(), koRoot.winfo_y()
     root_w = koRoot.winfo_width()
-
-    f_count = len(folders) + 1
-    current_base = os.path.basename(DEFOLDER) or DEFOLDER
-    f_names = [f"({len(files)}) [現在] {current_base}"] + [f"({len(folders)}) {f}" for f in folders]
-    max_f = max([len(f) for f in f_names]) if f_names else 5
-    w_f = calculate_folder_window_width(max_f)
-    h_f = calculate_folder_window_height(f_count)
-    x_f, y_f = root_x + root_w + WINDOW_SPACING, root_y
-    folder_win.geometry(f"{w_f}x{h_f}+{x_f}+{y_f}")
-    
-    g_count = len(files)
-    max_g = max([len(f) for f in files]) if files else 5
-    w_g = calculate_file_window_width(max_g)
-    h_g = calculate_file_window_height(g_count)
-    x_g, y_g = x_f + w_f + WINDOW_SPACING, root_y
-    
     screen_w = koRoot.winfo_screenwidth()
-    if x_g + w_g > screen_w:
-        x_g = max(10, root_x - w_g - WINDOW_SPACING)
-    file_win.geometry(f"{w_g}x{h_g}+{x_g}+{y_g}")
+
+    # Logicに計算を依頼
+    f_geo, g_geo = calculate_window_layout(
+        root_x, root_y, root_w, screen_w, 
+        folders, files, DEFOLDER
+    )
+    
+    folder_win.geometry(f_geo)
+    file_win.geometry(g_geo)
+
 
 def create_folder_list_window(parent, folders):
     win = tk.Toplevel(parent)
@@ -476,16 +463,12 @@ def update_dd_display():
 def auto_slideshow():
     global ss_after_id
     if ss_mode.get():
-        next_image = None
-        # AIモードかランダムモードかで分岐するのじゃ
-        if ss_ai_mode.get():
-            try:
-                next_image = data_manager.GetNextAIImage(ss_ai_threshold.get())
-            except Exception as e:
-                print(f"AI再生エラー: {e}")
-                next_image = data_manager.RandamGazoSet()
-        else:
-            next_image = data_manager.RandamGazoSet()
+        # Logicに次の画像を決定してもらう
+        next_image = decide_next_image(
+            data_manager, 
+            ss_ai_mode.get(), 
+            ss_ai_threshold.get()
+        )
 
         GazoControl.Drawing(next_image)
         ms = max(1000, ss_interval.get() * 1000)
@@ -588,15 +571,8 @@ def set_cpu_high_color():
     if val:
         cpu_high_color.set(val)
 
-# カラーブレンド関数 (hex -> hex)
-def blend_color(hex_low, hex_high, ratio):
-    # ratio: 0.0 (low) .. 1.0 (high)
-    low = int(hex_low.lstrip('#'), 16)
-    high = int(hex_high.lstrip('#'), 16)
-    r = int(((low >> 16) & 0xFF) * (1 - ratio) + ((high >> 16) & 0xFF) * ratio)
-    g = int(((low >> 8) & 0xFF) * (1 - ratio) + ((high >> 8) & 0xFF) * ratio)
-    b = int((low & 0xFF) * (1 - ratio) + (high & 0xFF) * ratio)
-    return f"#{r:02x}{g:02x}{b:02x}"
+# カラーブレンド関数は Logic に移動したので削除
+
 
 # ★ ここからリソース監視スレッドを起動 ★
 def _update_resource_usage():
